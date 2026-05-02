@@ -1,13 +1,27 @@
 # Building learn-rs
 
-This workspace depends on RuVector_Clean crates via a `../ruvector` symlink
-(a sibling of the `learn-rs` directory, resolved through Cargo relative paths).
+This workspace depends on RuVector crates via a `../ruvector` sibling directory.
+Cargo path deps are relative: `../../../ruvector/crates/<name>` (from inside `crates/<name>/`).
 
 **Stuart's machine:** the symlink is already present at
 `/Users/stuartkerr/Code/Video watcher skill/ruvector -> ~/RuVector_Clean`.
 
-**CI / other machines:** create the sibling symlink before running `cargo check`:
+**CI (GitHub Actions):** the release workflow does a shallow clone of the public
+repo `ruvnet/RuVector` into the sibling path `../ruvector` before any Cargo
+invocation. No secrets are required — the repo is MIT-licensed and public.
+
+```yaml
+- name: Clone ruvnet/RuVector (sibling, public)
+  shell: bash
+  run: |
+    git clone --depth 1 --branch main \
+      https://github.com/ruvnet/RuVector.git \
+      ../ruvector
 ```
-ln -s /path/to/RuVector_Clean /path/to/parent-dir/ruvector
+
+**Other machines:** clone or symlink `ruvnet/RuVector` (or `~/RuVector_Clean`) to
+the sibling path before running `cargo check`:
 ```
-The symlink must be a sibling of `learn-rs/`, not inside it.
+git clone --depth 1 https://github.com/ruvnet/RuVector.git ../ruvector
+```
+The directory must be a sibling of `learn-rs/`, not inside it.

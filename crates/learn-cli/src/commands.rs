@@ -1572,62 +1572,67 @@ mod tests {
                 .unwrap();
         }
 
-        // --- Phase B: reopen (simulates process restart) ---
-        let mut index2 = LearnIndex::open(kb_root.as_ref(), topic.clone()).unwrap();
+        // --- Phase B/C/D/E: reopen, verify, recover, complete ---
+        // Each phase uses a scoped block so the RVF writer lock is released
+        // before the next open (RvfStore acquires an advisory writer lock on
+        // the .rvf file; two live instances in the same process conflict).
+        {
+            let mut index2 = LearnIndex::open(kb_root.as_ref(), topic.clone()).unwrap();
 
-        // Verify the manifest survived the reopen.
-        let vs = index2
-            .manifest()
-            .videos
-            .get(video_id)
-            .expect("video state must survive reopen");
-        assert_eq!(
-            vs.status,
-            IngestStatus::Embedded,
-            "manifest must show Embedded after reopen"
-        );
+            // Phase B: manifest survived the reopen.
+            let status = index2
+                .manifest()
+                .videos
+                .get(video_id)
+                .expect("video state must survive reopen")
+                .status;
+            assert_eq!(
+                status,
+                IngestStatus::Embedded,
+                "manifest must show Embedded after reopen"
+            );
 
-        // --- Phase C: embedded_for_video must reconstruct the batch ---
-        let recovered = index2.embedded_for_video(video_id);
-        assert_eq!(
-            recovered.len(),
-            2,
-            "embedded_for_video must return both chunks from the sidecar"
-        );
-        assert!(
-            recovered.iter().all(|e| e.embedding.len() == 4),
-            "each recovered embedding must have dim=4"
-        );
-        assert!(
-            recovered.iter().all(|e| e.chunk.video_id == video_id),
-            "all recovered chunks must belong to the target video"
-        );
+            // Phase C: embedded_for_video reconstructs the batch.
+            let recovered = index2.embedded_for_video(video_id);
+            assert_eq!(
+                recovered.len(),
+                2,
+                "embedded_for_video must return both chunks from the sidecar"
+            );
+            assert!(
+                recovered.iter().all(|e| e.embedding.len() == 4),
+                "each recovered embedding must have dim=4"
+            );
+            assert!(
+                recovered.iter().all(|e| e.chunk.video_id == video_id),
+                "all recovered chunks must belong to the target video"
+            );
 
-        // --- Phase D: the CLI skip predicate fires for Embedded+!force ---
-        let force = false;
-        let would_resume = vs.status == IngestStatus::Embedded && !force && !recovered.is_empty();
-        assert!(
-            would_resume,
-            "should resume from Embedded checkpoint (not re-embed) when force=false"
-        );
+            // Phase D: the CLI skip predicate fires for Embedded+!force.
+            let force = false;
+            let would_resume = status == IngestStatus::Embedded && !force && !recovered.is_empty();
+            assert!(
+                would_resume,
+                "should resume from Embedded checkpoint (not re-embed) when force=false"
+            );
 
-        // --- Phase E: the index step completes with the recovered batch ---
-        // This mirrors what the CLI does after the fast-path is triggered.
-        let accepted = index2.ingest(&recovered).unwrap();
-        assert!(
-            accepted > 0 || recovered.len() > 0,
-            "index step must accept the recovered embeddings"
-        );
-        index2
-            .upsert_video_state(VideoState {
-                video_id: video_id.to_string(),
-                status: IngestStatus::Indexed,
-                fetched_at: Some("2026-01-01T00:00:00Z".to_string()),
-                indexed_at: Some("2026-01-01T00:00:05Z".to_string()),
-                chunk_count: recovered.len(),
-                error: None,
-            })
-            .unwrap();
+            // Phase E: the index step accepts the recovered embeddings.
+            let accepted = index2.ingest(&recovered).unwrap();
+            assert!(
+                accepted > 0 || !recovered.is_empty(),
+                "index step must accept the recovered embeddings"
+            );
+            index2
+                .upsert_video_state(VideoState {
+                    video_id: video_id.to_string(),
+                    status: IngestStatus::Indexed,
+                    fetched_at: Some("2026-01-01T00:00:00Z".to_string()),
+                    indexed_at: Some("2026-01-01T00:00:05Z".to_string()),
+                    chunk_count: recovered.len(),
+                    error: None,
+                })
+                .unwrap();
+        } // drops index2, releasing the RVF writer lock
 
         // Re-open once more and confirm Indexed status persisted.
         let index3 = LearnIndex::open(kb_root.as_ref(), topic).unwrap();

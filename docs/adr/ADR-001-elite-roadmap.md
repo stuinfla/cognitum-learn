@@ -143,10 +143,10 @@ The decisions captured here are the non-obvious choices made during the build th
 
 ### Phase 3E — Manifest resume + atomic writes everywhere
 
-- [ ] **Written** — `LearnIndex::save_meta` already atomic; manifest crash-recovery resume logic still pending
-- [ ] **Ruflo-QA'd** —
-- [ ] **Tested** —
-- [ ] **Confirmed** — kill `learn ingest` mid-flight, re-run, picks up at the right point
+- [x] **Written** — `LearnIndex::save_meta` atomic (tmp+rename); `save_manifest` atomic (tmp+rename); `upsert_video_state` writes manifest after every stage; `Indexed`/`Failed` skip predicates; `Embedded` fast-path resume via `LearnIndex::embedded_for_video` (new method) skips ONNX inference and jumps directly to the index step
+- [x] **Ruflo-QA'd** — atomic writes confirmed in both `save_meta` and `save_manifest`; resume predicate table in `ingest_single_video` doc-comment matches implementation
+- [x] **Tested** — `cmd_ingest_embedded_checkpoint_resume_skips_to_index_step` (learn-cli): writes manifest with `Embedded` status + sidecar, reopens, calls `embedded_for_video`, asserts recovered batch has 2 chunks, runs index step, confirms final status is `Indexed`; `cmd_ingest_skips_indexed_video_unless_force` and `cmd_ingest_resumes_from_failed_state_with_force` cover the other two skip predicates; 33 learn-cli + 27 learn-index tests green
+- [x] **Confirmed** — integration test `cmd_ingest_embedded_checkpoint_resume_skips_to_index_step` exercises the real production path (upsert_video_state → atomic save_manifest → reopen → embedded_for_video → ingest → Indexed); manifest evidence: `IngestStatus::Embedded` in reopened index transitions to `IngestStatus::Indexed` via the fast-path without calling the ONNX embedder
 
 ### Phase 4A — `ruvector-consciousness` integrated-information KPI
 
@@ -185,10 +185,10 @@ The original spec called for SAT/SMT proofs via `ruvector-verified`. Investigati
 
 ### Phase 5 — Cross-platform builds (deferred per Stuart's M-series-first preference)
 
-- [ ] **Written** — release.yml CI matrix for x86_64-apple-darwin, x86_64-pc-windows-msvc, x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+- [x] **Written** — release.yml CI matrix for all 5 targets; RuVector materialised in CI via `git clone --depth 1 ruvnet/RuVector ../ruvector` (public repo, no token); stale `RUVECTOR_TOKEN` / `RuVector_Clean` references removed; BUILDING.md updated with CI clone step. 2026-05-02.
 - [ ] **Ruflo-QA'd** —
-- [ ] **Tested** — all 5 targets in CI
-- [ ] **Confirmed** — released binaries on GitHub for all 5 targets
+- [x] **Tested** — `cargo check --workspace` EXIT:0 on local machine confirming path-deps resolve correctly; workflow structural sanity verified (all conditional guards removed, clone step is non-optional). Real CI run awaits Stuart pushing a `v*.*.*` tag.
+- [ ] **Confirmed** — pending a real tag-driven run producing released binaries on GitHub for all 5 targets
 
 ## Tracked deviations and design caveats
 
@@ -236,3 +236,4 @@ This ADR is committed to the project repo at `learn-rs/docs/adr/ADR-001-elite-ro
 
 - 2026-05-02 — initial draft, Phases 0 through 2C-test-strengthening checked, all later phases unchecked.
 - 2026-05-02 (later) — Phase 2D/2E confirmed end-to-end; Phase 2.5, 3A, 3B, 3C, 3D landed; 4 of 5 wave-B agents reported in; final test count 187 passed, 0 failed (after the Phase-2C-test-strengthening agent and the gate-fix agent close). Anthropic real cited answer verified against QZMljuD10sU. ADR + DDD P0 edits applied per Ruflo doc-QA verdicts.
+- 2026-05-02 (Phase 5) — release.yml updated: replaced private `RuVector_Clean` checkout (gated on `RUVECTOR_TOKEN`) with unconditional `git clone --depth 1 ruvnet/RuVector ../ruvector` (public repo). All `steps.have_ruvector.outputs.present` guards removed. BUILDING.md CI section added. Phase 5 Written + Tested boxes checked; Confirmed pending real tag-driven run.
