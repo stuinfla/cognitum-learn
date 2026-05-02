@@ -19,7 +19,7 @@ pub(crate) struct Bm25State {
 
 impl Bm25State {
     /// Build a fresh in-memory BM25 index from `chunks`.
-    pub(crate) fn build(chunks: &[&Chunk]) -> anyhow::Result<Self> {
+    pub(crate) fn build(chunks: &[&Chunk]) -> tantivy::Result<Self> {
         let mut sb = Schema::builder();
         let field_chunk_id = sb.add_text_field(FIELD_CHUNK_ID, STRING | STORED);
         let field_text = sb.add_text_field(FIELD_TEXT, TEXT);
@@ -43,7 +43,7 @@ impl Bm25State {
     }
 
     /// Query BM25 index; returns `(chunk_id, score)` pairs in score order.
-    pub(crate) fn search(&self, query_text: &str, k: usize) -> anyhow::Result<Vec<(String, f32)>> {
+    pub(crate) fn search(&self, query_text: &str, k: usize) -> tantivy::Result<Vec<(String, f32)>> {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
         let parser = QueryParser::for_index(&self.index, vec![self.field_text]);

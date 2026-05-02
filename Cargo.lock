@@ -1699,7 +1699,6 @@ dependencies = [
 name = "learn-retrieve"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "camino",
  "learn-core",
