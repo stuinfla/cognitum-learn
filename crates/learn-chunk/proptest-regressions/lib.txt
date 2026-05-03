@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f16f4e5581f281a461b20166594980e0a315025d5bf9e0322a72f9d0fdce147e # shrinks to t = Transcript { video_id: "prop-vid", language: None, source: Captions, segments: [Segment { start_seconds: 0.0, end_seconds: 5.0, text: "A longer sentence with more words and detail! A longer sentence with more words and detail! A longer sentence with more words and detail! The cat sat on the mat. A longer sentence with more words and detail! A longer sentence with more words and detail!", confidence: None, speaker: None, kind: Caption }] }
