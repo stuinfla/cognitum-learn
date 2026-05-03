@@ -126,6 +126,14 @@ async fn ingest_single_video(
     // 3. Acquire (or resume from checkpoint).
     let raw_dir = topic.raw_dir(&kb_root);
 
+    // 3a. Slug-collision guard: refuse if raw_dir has cached data from a video
+    //     not in this topic's manifest (i.e. squatted by an unrelated prior run).
+    {
+        let known_ids: std::collections::BTreeSet<String> =
+            index.manifest().videos.keys().cloned().collect();
+        learn_acquire::check_slug_collision(&raw_dir, topic.as_str(), &known_ids)?;
+    }
+
     tracing::info!(%topic, %source, "ingest: acquiring");
     let acquired = learn_acquire::acquire_url(&source, &kb_root, &raw_dir, frames_enabled).await?;
     let video_id = acquired.video.video_id.clone();

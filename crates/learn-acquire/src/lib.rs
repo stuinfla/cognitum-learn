@@ -227,6 +227,96 @@ fn validate_source(source: &str) -> Result<()> {
     Ok(())
 }
 
+/// Perform a HEAD probe on an `http(s)` URL with a 5-second timeout.
+///
+/// Returns `Ok(())` if the server responds with a 2xx or 3xx status code.
+/// Returns `Err(LearnError::Acquire)` for 4xx/5xx or connection errors.
+///
+/// Non-http(s) sources (local paths, `ytsearch:`, `@handles`) are skipped — the
+/// function returns `Ok(())` immediately without touching the network.
+pub async fn probe_http_url(source: &str) -> Result<()> {
+    // Only probe plain http/https URLs.
+    let parsed = match url::Url::parse(source) {
+        Ok(u) if u.scheme() == "http" || u.scheme() == "https" => u,
+        _ => return Ok(()), // local path, ytsearch:, @handle — skip
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|e| LearnError::Acquire(format!("could not build HTTP client: {e}")))?;
+
+    let response = client.head(parsed.as_str()).send().await.map_err(|e| {
+        LearnError::Acquire(format!(
+            "could not fetch URL: connection error — {e}. \
+                 Check the URL for typos."
+        ))
+    })?;
+
+    let status = response.status();
+    if status.is_success() || status.is_redirection() {
+        Ok(())
+    } else {
+        Err(LearnError::Acquire(format!(
+            "could not fetch URL: {} {}. Did you mean a different URL?",
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("Unknown")
+        )))
+    }
+}
+
+/// Check whether `raw_dir` already contains data from a video that is NOT in
+/// `known_video_ids` for this topic.
+///
+/// Reads `<raw_dir>/video.info.json` (if it exists) and checks its `id` field
+/// against `known_video_ids`. If the cached video_id is unknown to the topic's
+/// manifest, the directory is being squatted by an unrelated video and we
+/// refuse with a descriptive error.
+///
+/// Returns `Ok(())` when:
+/// - `video.info.json` does not exist yet (clean directory)
+/// - `video.info.json` exists and the stored `id` is in `known_video_ids`
+///   (legitimate multi-video topic or resume of the same video)
+pub fn check_slug_collision(
+    raw_dir: &Utf8Path,
+    slug: &str,
+    known_video_ids: &std::collections::BTreeSet<String>,
+) -> Result<()> {
+    let info_path = raw_dir.join("video.info.json");
+    if !info_path.exists() {
+        return Ok(());
+    }
+
+    let raw = fs::read_to_string(&info_path).map_err(|e| {
+        LearnError::Acquire(format!(
+            "could not read existing info.json at {info_path}: {e}"
+        ))
+    })?;
+
+    #[derive(serde::Deserialize)]
+    struct IdOnly {
+        id: String,
+    }
+
+    let existing: IdOnly = serde_json::from_str(&raw).map_err(|e| {
+        LearnError::Acquire(format!(
+            "could not parse existing info.json at {info_path}: {e}"
+        ))
+    })?;
+
+    if !known_video_ids.contains(&existing.id) {
+        return Err(LearnError::Acquire(format!(
+            "topic '{slug}' already has cached data from video '{}'. \
+             To replace, run `learn forget {slug}` first. \
+             To add to it, the slug must match the existing topic's purpose.",
+            existing.id
+        )));
+    }
+
+    Ok(())
+}
+
 /// Download captions (and optionally the video file) for `url` into `raw_dir`.
 ///
 /// Shells out to `yt-dlp`. Success is defined by the presence of
@@ -244,6 +334,8 @@ pub async fn acquire_url(
     download_video: bool,
 ) -> Result<Acquired> {
     validate_source(url)?;
+    // HEAD probe: fail fast for unreachable http(s) URLs before touching disk.
+    probe_http_url(url).await?;
     validate_raw_dir_under_kb_root(kb_root, raw_dir)?;
     fs::create_dir_all(raw_dir)?;
 
@@ -680,5 +772,124 @@ mod tests {
         assert!(result.is_ok(), "{result:?}");
         let acq = result.unwrap();
         assert!(!acq.video.video_id.is_empty());
+    }
+
+    // ── probe_http_url tests ──────────────────────────────────────────────────
+
+    /// Non-http sources (local path, ytsearch:, @handle) skip the probe and
+    /// return Ok(()) immediately.
+    #[tokio::test]
+    async fn probe_skips_non_http_sources() {
+        // ytsearch: pseudo-scheme — not http, must be skipped
+        assert!(
+            probe_http_url("ytsearch5:rust programming").await.is_ok(),
+            "ytsearch: should be skipped (no network probe)"
+        );
+        // @handle — not a URL at all
+        assert!(
+            probe_http_url("@mkbhd").await.is_ok(),
+            "@handle should be skipped (no network probe)"
+        );
+    }
+
+    /// A known-good URL (example.com returns 200) must return Ok(()).
+    /// Requires network. Marked ignore so CI doesn't depend on it.
+    #[tokio::test]
+    #[ignore = "requires network"]
+    async fn probe_succeeds_for_reachable_url() {
+        assert!(
+            probe_http_url("https://www.example.com/").await.is_ok(),
+            "probe should return Ok for a reachable URL"
+        );
+    }
+
+    /// A URL on a guaranteed-unreachable host (localhost:19999) must return Err.
+    #[tokio::test]
+    async fn probe_fails_for_unreachable_host() {
+        let result = probe_http_url("http://127.0.0.1:19999/nonexistent").await;
+        assert!(
+            result.is_err(),
+            "expected Err for unreachable host, got: {result:?}"
+        );
+        if let Err(LearnError::Acquire(msg)) = result {
+            assert!(
+                msg.contains("could not fetch URL"),
+                "error message should say 'could not fetch URL'; got: {msg}"
+            );
+        }
+    }
+
+    // ── check_slug_collision tests ────────────────────────────────────────────
+
+    /// Clean directory (no video.info.json) → no collision.
+    #[test]
+    fn slug_collision_clean_dir_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let known = std::collections::BTreeSet::new();
+        assert!(
+            check_slug_collision(&base, "my-topic", &known).is_ok(),
+            "clean directory should not trigger collision"
+        );
+    }
+
+    /// video.info.json exists and its id IS in known_video_ids → no collision.
+    #[test]
+    fn slug_collision_known_video_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            base.join("video.info.json"),
+            r#"{"id":"abc123","title":"Test"}"#,
+        )
+        .unwrap();
+        let mut known = std::collections::BTreeSet::new();
+        known.insert("abc123".to_string());
+        assert!(
+            check_slug_collision(&base, "my-topic", &known).is_ok(),
+            "known video id should not trigger collision"
+        );
+    }
+
+    /// video.info.json exists but its id is NOT in known_video_ids → collision error.
+    #[test]
+    fn slug_collision_unknown_video_is_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            base.join("video.info.json"),
+            r#"{"id":"squatter_video","title":"Other Video"}"#,
+        )
+        .unwrap();
+        let known: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let result = check_slug_collision(&base, "my-topic", &known);
+        assert!(
+            result.is_err(),
+            "unknown cached video id should trigger collision"
+        );
+        if let Err(LearnError::Acquire(msg)) = result {
+            assert!(
+                msg.contains("squatter_video"),
+                "error should name the conflicting video id; got: {msg}"
+            );
+            assert!(
+                msg.contains("learn forget"),
+                "error should suggest 'learn forget'; got: {msg}"
+            );
+        }
+    }
+
+    /// Malformed video.info.json → returns Acquire error (not a panic).
+    #[test]
+    fn slug_collision_malformed_info_json_returns_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(base.join("video.info.json"), b"not valid json").unwrap();
+        let known: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let result = check_slug_collision(&base, "my-topic", &known);
+        assert!(
+            matches!(result, Err(LearnError::Acquire(_))),
+            "malformed info.json should return LearnError::Acquire, got: {result:?}"
+        );
     }
 }

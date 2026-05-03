@@ -122,6 +122,9 @@ enum Cmd {
     },
     /// Re-embed, dedupe, optimize HNSW.
     Compact { topic: String },
+    /// First-60-seconds environment diagnostic: check deps, storage, network,
+    /// version, and config.  Exit 0 when all required checks pass.
+    Doctor,
 }
 
 /// Print the friendly orientation block and exit 0.
@@ -162,6 +165,12 @@ async fn main() {
     init_tracing();
     let cli = Cli::parse();
     let kb_root = resolve_kb_root(cli.kb_root);
+
+    // Doctor is handled separately: it has its own exit-code logic.
+    if matches!(cli.cmd, Cmd::Doctor) {
+        let ok = doctor::run_doctor(kb_root.as_std_path()).await;
+        process::exit(if ok { 0 } else { 1 });
+    }
 
     let result = match cli.cmd {
         Cmd::Ingest {
@@ -221,6 +230,8 @@ async fn main() {
         Cmd::Eval { topic } => commands::run_regression(topic, kb_root).await,
         Cmd::Forget { topic, video } => commands::run_forget(topic, video, kb_root),
         Cmd::Compact { topic } => commands::run_compact(topic, kb_root),
+        // Doctor is dispatched above; this arm is unreachable but required by exhaustiveness.
+        Cmd::Doctor => unreachable!("doctor dispatched before match"),
     };
 
     if let Err(e) = result {
@@ -579,6 +590,68 @@ mod tests {
             assert!(
                 msg.contains("model") || msg.contains("onnx") || msg.contains("load"),
                 "error message should mention model loading; got: {msg}"
+            );
+        }
+    }
+
+    // ── run_ask exit-code discriminator tests ─────────────────────────────────
+
+    /// When a topic has an empty manifest (no videos ever ingested), the index
+    /// is considered "KB missing". The test verifies the manifest discriminator
+    /// works correctly — i.e. `LearnIndex::open` on a fresh dir yields an empty
+    /// manifest, which is the trigger for exit 2.
+    #[test]
+    fn ask_exit2_discriminator_empty_manifest_on_fresh_topic() {
+        let dir = tempfile::tempdir().unwrap();
+        let kb_root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let topic = learn_core::Topic::new("nonexistent-topic").unwrap();
+        let index = learn_index::LearnIndex::open(&kb_root, topic).unwrap();
+        assert!(
+            index.manifest().videos.is_empty(),
+            "fresh topic must have empty manifest — discriminator for exit 2"
+        );
+    }
+
+    /// When slug-collision guard fires, ingest returns LearnError::Acquire
+    /// with the blocking message before calling yt-dlp.
+    #[tokio::test]
+    async fn cmd_ingest_slug_collision_returns_acquire_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let kb_root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+
+        // Pre-create the raw_dir with a video.info.json for a video NOT in manifest.
+        let raw_dir = kb_root.join("_raw").join("my-topic");
+        std::fs::create_dir_all(raw_dir.as_std_path()).unwrap();
+        std::fs::write(
+            raw_dir.join("video.info.json").as_std_path(),
+            r#"{"id":"squatter_xyz","title":"unrelated video"}"#,
+        )
+        .unwrap();
+
+        // The manifest is empty so "squatter_xyz" is NOT a known video.
+        let result = commands::run_ingest_with_limit(
+            "https://example.com/my-topic".to_string(),
+            Some("my-topic".to_string()),
+            kb_root,
+            false, // force=false
+            None,
+            false,
+            60,
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(learn_core::LearnError::Acquire(_))),
+            "slug collision must return Err(LearnError::Acquire), got: {result:?}"
+        );
+        if let Err(learn_core::LearnError::Acquire(msg)) = result {
+            assert!(
+                msg.contains("squatter_xyz"),
+                "error should name the conflicting video; got: {msg}"
+            );
+            assert!(
+                msg.contains("learn forget"),
+                "error should suggest learn forget; got: {msg}"
             );
         }
     }
