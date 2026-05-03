@@ -127,7 +127,7 @@ async fn ingest_single_video(
     let raw_dir = topic.raw_dir(&kb_root);
 
     tracing::info!(%topic, %source, "ingest: acquiring");
-    let acquired = learn_acquire::acquire_url(&source, &kb_root, &raw_dir).await?;
+    let acquired = learn_acquire::acquire_url(&source, &kb_root, &raw_dir, frames_enabled).await?;
     let video_id = acquired.video.video_id.clone();
 
     // 4. Check existing manifest state and apply resume logic.
@@ -226,8 +226,18 @@ async fn ingest_single_video(
 
     // 7b. Optionally extract keyframes and caption them with Sonnet vision.
     let frame_segments = if frames_enabled {
-        let video_path = acquired.raw_dir.join(format!("{video_id}.mp4"));
-        run_frame_captioning(&video_path, &acquired.raw_dir, max_frames).await
+        let video_path = find_video_file(&acquired.raw_dir);
+        match video_path {
+            Some(ref p) => run_frame_captioning(p, &acquired.raw_dir, max_frames).await,
+            None => {
+                tracing::warn!(
+                    raw_dir = %acquired.raw_dir,
+                    "frames enabled but no video file found in raw_dir — \
+                     yt-dlp may have failed to download; continuing captions-only"
+                );
+                vec![]
+            }
+        }
     } else {
         vec![]
     };
@@ -478,13 +488,29 @@ pub async fn run_summarize(
 // ── List ─────────────────────────────────────────────────────────────────────
 
 /// List videos in a topic, grouped by video_id, sorted by `by`.
-pub fn run_list(topic_str: String, by: String, kb_root: Utf8PathBuf) -> Result<()> {
+pub fn run_list(topic_str: Option<String>, by: String, kb_root: Utf8PathBuf) -> Result<()> {
+    // No topic? List every KB we've built. Friendly empty-state.
+    let Some(topic_str) = topic_str else {
+        return run_list_all_topics(kb_root);
+    };
     let topic = Topic::new(&topic_str)?;
+    let kb_path = kb_root.join(format!("{}.rvf", topic.as_str()));
+    if !kb_path.exists() {
+        println!("No knowledge base for topic '{topic}' yet.");
+        println!();
+        println!("To build one, try one of:");
+        println!("  learn ingest \"<youtube-url>\" --topic {topic}");
+        println!("  learn study \"<topic description>\" --topic {topic}");
+        println!();
+        println!("Or run `learn list` (no args) to see what KBs you do have.");
+        return Ok(());
+    }
     let index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;
     let manifest = load_manifest_opt(&kb_root, &topic);
     let chunks = index.chunks_snapshot();
     if chunks.is_empty() {
-        println!("(no videos in topic {topic})");
+        println!("Topic '{topic}' exists but has no videos yet.");
+        println!("Add one with: learn ingest \"<youtube-url>\" --topic {topic}");
         return Ok(());
     }
     // Group: video_id → (chunk_count, max_end_seconds)
@@ -1069,6 +1095,29 @@ pub async fn run_study(
 
 // ── Frame captioning helper ──────────────────────────────────────────────────
 
+/// Locate the downloaded video file in `raw_dir`.
+///
+/// yt-dlp writes the video as `video.<ext>` (e.g. `video.mp4`, `video.webm`).
+/// Returns the first matching path that is not a caption (`.vtt`) or metadata
+/// (`.json`) file. Returns `None` when no video file is present (captions-only
+/// run, or yt-dlp download failed).
+fn find_video_file(raw_dir: &camino::Utf8Path) -> Option<camino::Utf8PathBuf> {
+    let entries = std::fs::read_dir(raw_dir.as_std_path()).ok()?;
+    for entry in entries.flatten() {
+        let path = camino::Utf8PathBuf::from_path_buf(entry.path()).ok()?;
+        let name = path.file_name().unwrap_or("");
+        // Must start with "video." and not be a subtitle or metadata file.
+        if name.starts_with("video.")
+            && !name.ends_with(".vtt")
+            && !name.ends_with(".json")
+            && !name.ends_with(".part")
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
 /// Extract keyframes from a video and caption them with Sonnet vision.
 ///
 /// Returns an empty `Vec` (not an error) if the video path does not exist or if
@@ -1142,6 +1191,7 @@ fn claims_to_hits(claims: &[learn_graph::Claim], video_id: &str) -> Vec<learn_co
                 end_seconds: c.source_timestamp + 1.0,
                 text: c.text.clone(),
                 token_count: c.text.split_whitespace().count(),
+                kind: learn_core::SegmentKind::Caption,
             },
             score: 1.0,
             rank,
@@ -1182,6 +1232,90 @@ fn load_manifest_opt(kb_root: &Utf8PathBuf, topic: &Topic) -> Option<Manifest> {
     std::fs::read_to_string(path.as_std_path())
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+/// `learn list` with no topic — show every KB the user has built. Friendly
+/// empty-state when nothing exists yet (no errors, just guidance).
+fn run_list_all_topics(kb_root: Utf8PathBuf) -> Result<()> {
+    let rvf_files = list_rvf_files(&kb_root);
+    if rvf_files.is_empty() {
+        println!("No knowledge bases yet at {kb_root}.");
+        println!();
+        println!("Build your first one:");
+        println!("  learn ingest \"<youtube-url>\" --topic <name>");
+        println!("    Add a single video, channel, playlist, or search.");
+        println!();
+        println!("  learn study \"<topic description>\" --topic <name>");
+        println!("    Auto-discover the best videos for a topic and ingest them.");
+        return Ok(());
+    }
+    println!("{:<24}  {:>8}  {:>10}  size", "topic", "videos", "vectors");
+    println!("{}", "─".repeat(60));
+    let mut total_vectors = 0usize;
+    let mut total_bytes = 0u64;
+    for path in rvf_files {
+        let topic_slug = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("?")
+            .to_string();
+        let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        total_bytes = total_bytes.saturating_add(bytes);
+        let topic = match Topic::new(&topic_slug) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let (vectors, videos) = LearnIndex::open(kb_root.as_ref(), topic.clone())
+            .ok()
+            .and_then(|idx| idx.stats().ok().map(|s| (s.vector_count, idx)))
+            .map(|(v, idx)| {
+                let manifest = load_manifest_opt(&kb_root, &topic);
+                let video_count = manifest
+                    .as_ref()
+                    .map(|m| m.videos.len())
+                    .unwrap_or_else(|| {
+                        let chunks = idx.chunks_snapshot();
+                        chunks
+                            .iter()
+                            .map(|c| c.video_id.clone())
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                    });
+                (v, video_count)
+            })
+            .unwrap_or((0, 0));
+        total_vectors += vectors;
+        println!(
+            "{:<24}  {:>8}  {:>10}  {}",
+            topic_slug,
+            videos,
+            vectors,
+            format_bytes(bytes),
+        );
+    }
+    println!("{}", "─".repeat(60));
+    println!(
+        "  total: {} vectors across {} topics, {}",
+        total_vectors,
+        list_rvf_files(&kb_root).len(),
+        format_bytes(total_bytes),
+    );
+    println!();
+    println!("Inspect a topic:  learn list <topic>");
+    println!("Health snapshot:  learn status <topic>");
+    Ok(())
+}
+
+fn format_bytes(b: u64) -> String {
+    if b < 1024 {
+        format!("{b} B")
+    } else if b < 1024 * 1024 {
+        format!("{:.1} KB", b as f64 / 1024.0)
+    } else if b < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", b as f64 / 1_048_576.0)
+    } else {
+        format!("{:.2} GB", b as f64 / 1_073_741_824.0)
+    }
 }
 
 fn list_rvf_files(kb_root: &Utf8PathBuf) -> Vec<std::path::PathBuf> {
@@ -1296,7 +1430,7 @@ mod tests {
     #[test]
     fn cmd_list_returns_empty_on_fresh_topic() {
         let dir = TempDir::new().unwrap();
-        let result = run_list("fresh-list".to_string(), "date".to_string(), kb(&dir));
+        let result = run_list(Some("fresh-list".to_string()), "date".to_string(), kb(&dir));
         assert!(
             result.is_ok(),
             "list on fresh topic should be Ok: {result:?}"
@@ -1363,7 +1497,7 @@ mod tests {
     /// validating the adapter wire-up logic without the CLI layer.
     #[tokio::test]
     async fn eval_adapter_wire_up_passes_canned_answer() {
-        use learn_core::{Answer, Chunk, Citation, Hit};
+        use learn_core::{Answer, Chunk, Citation, Hit, SegmentKind};
         use learn_eval::{GoldenItem, GoldenSet, ItemMode};
         use url::Url;
 
@@ -1376,6 +1510,7 @@ mod tests {
                     end_seconds: 5.0,
                     text: "answer content".into(),
                     token_count: 2,
+                    kind: SegmentKind::Caption,
                 },
                 score: 0.9,
                 rank: 0,
@@ -1610,7 +1745,7 @@ mod tests {
     /// save_manifest → reopen → embedded_for_video) without calling acquire_url.
     #[test]
     fn cmd_ingest_embedded_checkpoint_resume_skips_to_index_step() {
-        use learn_core::{Chunk, Embedded, IngestStatus, VideoState};
+        use learn_core::{Chunk, Embedded, IngestStatus, SegmentKind, VideoState};
         use learn_index::LearnIndex;
 
         let dir = TempDir::new().unwrap();
@@ -1631,6 +1766,7 @@ mod tests {
                     end_seconds: i as f64 * 10.0 + 9.9,
                     text: format!("chunk text {i}"),
                     token_count: 3,
+                    kind: SegmentKind::Caption,
                 })
                 .collect();
 

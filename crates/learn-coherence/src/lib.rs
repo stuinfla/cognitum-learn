@@ -383,7 +383,7 @@ fn compute_workspace_score(embedded: &[Embedded]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use learn_core::{Chunk, Embedded};
+    use learn_core::{Chunk, Embedded, SegmentKind};
 
     fn make_embedded(chunk_id: &str, video_id: &str, embedding: Vec<f32>) -> Embedded {
         Embedded {
@@ -394,6 +394,7 @@ mod tests {
                 end_seconds: 1.0,
                 text: "test chunk".to_string(),
                 token_count: 3,
+                kind: SegmentKind::Caption,
             },
             embedding,
             embedding_model: "test".to_string(),

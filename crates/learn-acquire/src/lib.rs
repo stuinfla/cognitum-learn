@@ -227,18 +227,27 @@ fn validate_source(source: &str) -> Result<()> {
     Ok(())
 }
 
-/// Download captions (no audio/video) for `url` into `raw_dir`.
+/// Download captions (and optionally the video file) for `url` into `raw_dir`.
 ///
 /// Shells out to `yt-dlp`. Success is defined by the presence of
 /// `video.info.json` — yt-dlp may exit non-zero even when info was written.
 ///
+/// When `download_video` is `true` the video is downloaded at low resolution
+/// (≤480p) so that frame extraction can run. When `false` only captions and
+/// metadata are fetched (`--skip-download`).
+///
 /// `raw_dir` must be under `kb_root`; returns `Err(LearnError::Acquire)` if not.
-pub async fn acquire_url(url: &str, kb_root: &Utf8Path, raw_dir: &Utf8Path) -> Result<Acquired> {
+pub async fn acquire_url(
+    url: &str,
+    kb_root: &Utf8Path,
+    raw_dir: &Utf8Path,
+    download_video: bool,
+) -> Result<Acquired> {
     validate_source(url)?;
     validate_raw_dir_under_kb_root(kb_root, raw_dir)?;
     fs::create_dir_all(raw_dir)?;
 
-    run_ytdlp(url, raw_dir).await?;
+    run_ytdlp(url, raw_dir, download_video).await?;
 
     let info_path = raw_dir.join("video.info.json");
     let info = read_info_json(&info_path)?;
@@ -310,21 +319,41 @@ fn validate_raw_dir_under_kb_root(kb_root: &Utf8Path, raw_dir: &Utf8Path) -> Res
     Ok(())
 }
 
-async fn run_ytdlp(url: &str, raw_dir: &Utf8Path) -> Result<()> {
+/// Build the yt-dlp argument list without spawning a process.
+///
+/// Extracted into a pure function so it can be unit-tested without network access.
+pub fn build_ytdlp_args(url: &str, raw_dir: &Utf8Path, download_video: bool) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+
+    if !download_video {
+        args.push("--skip-download".into());
+    } else {
+        // Low-res download to keep bandwidth manageable; prefer mp4.
+        args.push("-f".into());
+        args.push("best[height<=480][ext=mp4]/best[height<=480]/best".into());
+    }
+
+    args.extend([
+        "--write-subs".into(),
+        "--write-auto-subs".into(),
+        "--write-info-json".into(),
+        "--sub-lang".into(),
+        "en,en-US,en-GB,en-orig".into(),
+        "--sub-format".into(),
+        "vtt".into(),
+        "-o".into(),
+        format!("{}/video.%(ext)s", raw_dir),
+        url.to_owned(),
+    ]);
+
+    args
+}
+
+async fn run_ytdlp(url: &str, raw_dir: &Utf8Path, download_video: bool) -> Result<()> {
+    let args = build_ytdlp_args(url, raw_dir, download_video);
+
     let output = Command::new("yt-dlp")
-        .args([
-            "--skip-download",
-            "--write-subs",
-            "--write-auto-subs",
-            "--write-info-json",
-            "--sub-lang",
-            "en,en-US,en-GB,en-orig",
-            "--sub-format",
-            "vtt",
-            "-o",
-            &format!("{}/video.%(ext)s", raw_dir),
-            url,
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| LearnError::Acquire(format!("yt-dlp not found or failed to spawn: {e}")))?;
@@ -421,7 +450,7 @@ mod tests {
         let kb_root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         // "/tmp/outside" is not under the temp kb_root.
         let outside = Utf8PathBuf::from("/tmp/outside_kb_root_test");
-        let result = acquire_url("https://example.com/video", &kb_root, &outside).await;
+        let result = acquire_url("https://example.com/video", &kb_root, &outside, false).await;
         assert!(
             matches!(result, Err(LearnError::Acquire(_))),
             "expected Err(LearnError::Acquire) but got: {result:?}"
@@ -435,7 +464,7 @@ mod tests {
         let inside = kb_root.join("_raw").join("test-topic");
         // This should pass validation (yt-dlp will fail but that's ok — we only
         // test the path guard here).
-        let result = acquire_url("https://example.com/video", &kb_root, &inside).await;
+        let result = acquire_url("https://example.com/video", &kb_root, &inside, false).await;
         // Validation passes; yt-dlp is expected to fail in CI — not Acquire path error.
         if let Err(LearnError::Acquire(msg)) = &result {
             assert!(
@@ -491,7 +520,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let kb_root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         let raw_dir = kb_root.join("_raw").join("test");
-        let result = acquire_url("--malicious-flag", &kb_root, &raw_dir).await;
+        let result = acquire_url("--malicious-flag", &kb_root, &raw_dir, false).await;
         assert!(
             matches!(result, Err(LearnError::Acquire(_))),
             "expected Err(LearnError::Acquire) synchronously, got: {result:?}"
@@ -596,6 +625,44 @@ mod tests {
         }
     }
 
+    // ── build_ytdlp_args unit tests ────────────────────────────────────────────
+
+    #[test]
+    fn ytdlp_args_skip_download_when_frames_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw_dir = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let args = build_ytdlp_args("https://example.com/v", &raw_dir, false);
+        assert!(
+            args.contains(&"--skip-download".to_string()),
+            "should include --skip-download when download_video=false; args={args:?}"
+        );
+        assert!(
+            !args.iter().any(|a| a == "-f"),
+            "should not include -f format selector when download_video=false; args={args:?}"
+        );
+    }
+
+    #[test]
+    fn ytdlp_args_downloads_video_when_frames_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw_dir = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let args = build_ytdlp_args("https://example.com/v", &raw_dir, true);
+        assert!(
+            !args.contains(&"--skip-download".to_string()),
+            "should NOT include --skip-download when download_video=true; args={args:?}"
+        );
+        let f_pos = args.iter().position(|a| a == "-f");
+        assert!(
+            f_pos.is_some(),
+            "should include -f format selector when download_video=true; args={args:?}"
+        );
+        let format_val = &args[f_pos.unwrap() + 1];
+        assert!(
+            format_val.contains("height<=480"),
+            "format selector should cap resolution at 480p; got={format_val}"
+        );
+    }
+
     /// Network test — requires `yt-dlp` on PATH and internet access.
     #[tokio::test]
     #[ignore]
@@ -607,6 +674,7 @@ mod tests {
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             &base,
             &raw_dir,
+            false,
         )
         .await;
         assert!(result.is_ok(), "{result:?}");

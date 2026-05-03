@@ -637,7 +637,7 @@ impl Synthesizer for RuvllmSynthesizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use learn_core::Chunk;
+    use learn_core::{Chunk, SegmentKind};
     use std::sync::Mutex;
 
     // Process-level mutex serialises tests that mutate ANTHROPIC_API_KEY or
@@ -656,6 +656,7 @@ mod tests {
                 end_seconds: 5.0,
                 text: text.to_string(),
                 token_count: 10,
+                kind: SegmentKind::Caption,
             },
             score: 0.9,
             rank: 0,

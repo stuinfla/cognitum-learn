@@ -1,6 +1,6 @@
 //! Hermetic tests for learn-retrieve.
 
-use learn_core::{Chunk, Hit, Topic};
+use learn_core::{Chunk, Hit, SegmentKind, Topic};
 
 use crate::bm25::Bm25State;
 use crate::fuse::rrf_fuse;
@@ -17,6 +17,7 @@ fn make_chunk(i: usize, video_id: &str, text: &str) -> Chunk {
         end_seconds: i as f64 + 1.0,
         text: text.to_owned(),
         token_count: text.split_whitespace().count(),
+        kind: SegmentKind::Caption,
     }
 }
 

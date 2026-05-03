@@ -7,7 +7,7 @@
 
 #![deny(unsafe_code)]
 
-use learn_core::{Chunk, LearnError, Result, Transcript};
+use learn_core::{Chunk, LearnError, Result, SegmentKind, Transcript};
 use tracing::debug;
 
 /// Approximate token count for a string slice.
@@ -50,12 +50,18 @@ struct Sentence {
     start_seconds: f64,
     end_seconds: f64,
     tokens: usize,
+    kind: SegmentKind,
 }
 
 /// Split one segment's text into sentence fragments at `[.!?]` boundaries.
 /// If the text has no terminating punctuation the whole segment becomes one
 /// fragment. Whitespace-only or empty fragments are discarded.
-fn split_segment_into_sentences(text: &str, start: f64, end: f64) -> Vec<Sentence> {
+fn split_segment_into_sentences(
+    text: &str,
+    start: f64,
+    end: f64,
+    kind: SegmentKind,
+) -> Vec<Sentence> {
     let text = text.trim();
     if text.is_empty() {
         return vec![];
@@ -82,6 +88,7 @@ fn split_segment_into_sentences(text: &str, start: f64, end: f64) -> Vec<Sentenc
                     let tokens = approx_tokens(&trimmed);
                     sentences.push(Sentence {
                         text: trimmed,
+                        kind,
                         start_seconds: start,
                         end_seconds: end,
                         tokens,
@@ -106,6 +113,7 @@ fn split_segment_into_sentences(text: &str, start: f64, end: f64) -> Vec<Sentenc
             start_seconds: start,
             end_seconds: end,
             tokens,
+            kind,
         });
     }
 
@@ -117,11 +125,16 @@ fn sentences_from_transcript(transcript: &Transcript) -> Vec<Sentence> {
     transcript
         .segments
         .iter()
-        .flat_map(|seg| split_segment_into_sentences(&seg.text, seg.start_seconds, seg.end_seconds))
+        .flat_map(|seg| {
+            split_segment_into_sentences(&seg.text, seg.start_seconds, seg.end_seconds, seg.kind)
+        })
         .collect()
 }
 
 /// Build a [`Chunk`] from a slice of sentences.
+///
+/// The chunk kind is `FrameDescription` if any contributing sentence is a
+/// frame description; otherwise it defaults to `Caption`.
 fn build_chunk(sentences: &[Sentence], video_id: &str, idx: usize) -> Chunk {
     debug_assert!(!sentences.is_empty());
     let text = sentences
@@ -132,6 +145,14 @@ fn build_chunk(sentences: &[Sentence], video_id: &str, idx: usize) -> Chunk {
     let token_count = approx_tokens(&text);
     let start_seconds = sentences.first().map(|s| s.start_seconds).unwrap_or(0.0);
     let end_seconds = sentences.last().map(|s| s.end_seconds).unwrap_or(0.0);
+    let kind = if sentences
+        .iter()
+        .any(|s| s.kind == SegmentKind::FrameDescription)
+    {
+        SegmentKind::FrameDescription
+    } else {
+        SegmentKind::Caption
+    };
     Chunk {
         chunk_id: format!("{}:{}", video_id, idx),
         video_id: video_id.to_string(),
@@ -139,6 +160,7 @@ fn build_chunk(sentences: &[Sentence], video_id: &str, idx: usize) -> Chunk {
         end_seconds,
         text,
         token_count,
+        kind,
     }
 }
 
@@ -724,7 +746,12 @@ mod tests {
                 .segments
                 .iter()
                 .flat_map(|seg| {
-                    split_segment_into_sentences(&seg.text, seg.start_seconds, seg.end_seconds)
+                    split_segment_into_sentences(
+                        &seg.text,
+                        seg.start_seconds,
+                        seg.end_seconds,
+                        seg.kind,
+                    )
                 })
                 .map(|s| s.tokens)
                 .max()

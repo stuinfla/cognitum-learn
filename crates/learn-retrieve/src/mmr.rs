@@ -135,7 +135,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use learn_core::{Chunk, Hit};
+    use learn_core::{Chunk, Hit, SegmentKind};
 
     fn make_chunk(i: usize, video_id: &str) -> Chunk {
         Chunk {
@@ -145,6 +145,7 @@ mod tests {
             end_seconds: i as f64 + 1.0,
             text: format!("text {i}"),
             token_count: 2,
+            kind: SegmentKind::Caption,
         }
     }
 

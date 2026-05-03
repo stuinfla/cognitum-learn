@@ -287,7 +287,7 @@ fn build_reasoning(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use learn_core::{Answer, Chunk, Citation, Hit};
+    use learn_core::{Answer, Chunk, Citation, Hit, SegmentKind};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use url::Url;
 
@@ -324,6 +324,7 @@ items:
                 end_seconds: 10.0,
                 text: text.into(),
                 token_count: 5,
+                kind: SegmentKind::Caption,
             },
             score: 0.9,
             rank: 0,

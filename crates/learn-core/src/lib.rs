@@ -133,18 +133,20 @@ pub struct Acquired {
     pub raw_dir: Utf8PathBuf,
 }
 
-/// Discriminates the origin of a [`Segment`].
+/// Discriminates the origin of a [`Segment`] or [`Chunk`].
 ///
-/// Serializes as a lowercase string. Old data that predates this field
-/// deserializes to [`SegmentKind::Caption`] via the `#[serde(default)]` on
-/// the containing [`Segment`] struct.
+/// Serializes as PascalCase (`"Caption"`, `"FrameDescription"`).
+/// Old data that predates this field deserializes to [`SegmentKind::Caption`]
+/// via the `#[serde(default)]` on the containing struct.
+/// The snake_case alias `"frame_description"` is also accepted for backward
+/// compat with data written by earlier versions of this library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum SegmentKind {
     /// Text derived from auto-captions or Whisper ASR.
     #[default]
     Caption,
     /// Text derived from Sonnet-vision frame description.
+    #[serde(alias = "frame_description")]
     FrameDescription,
 }
 
@@ -186,6 +188,10 @@ pub struct Chunk {
     pub end_seconds: f64,
     pub text: String,
     pub token_count: usize,
+    /// Origin of this chunk. Defaults to [`SegmentKind::Caption`] so that
+    /// meta JSON written before this field was added deserializes correctly.
+    #[serde(default)]
+    pub kind: SegmentKind,
 }
 
 /// A chunk with its dense embedding attached.
@@ -289,7 +295,7 @@ mod tests {
         );
     }
 
-    /// FrameDescription round-trips correctly.
+    /// FrameDescription round-trips correctly (PascalCase in JSON).
     #[test]
     fn segment_frame_description_round_trip() {
         let seg = Segment {
@@ -303,7 +309,23 @@ mod tests {
         let s = serde_json::to_string(&seg).unwrap();
         let back: Segment = serde_json::from_str(&s).unwrap();
         assert_eq!(back.kind, SegmentKind::FrameDescription);
-        assert!(s.contains("frame_description"));
+        // Serializes as PascalCase to match the grep-visible form in meta.json.
+        assert!(
+            s.contains("FrameDescription"),
+            "kind should serialize as 'FrameDescription'; got: {s}"
+        );
+    }
+
+    /// The snake_case alias is accepted for backward compat with old meta.json files.
+    #[test]
+    fn segment_frame_description_accepts_snake_case_alias() {
+        let json = r#"{"start_seconds":10.0,"end_seconds":10.1,"text":"frame","confidence":null,"speaker":null,"kind":"frame_description"}"#;
+        let seg: Segment = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            seg.kind,
+            SegmentKind::FrameDescription,
+            "snake_case alias 'frame_description' should deserialize to FrameDescription"
+        );
     }
 
     #[test]

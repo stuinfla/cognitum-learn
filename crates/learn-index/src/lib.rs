@@ -1297,7 +1297,7 @@ fn dir_size_bytes(dir: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use learn_core::{Chunk, Embedded, Topic};
+    use learn_core::{Chunk, Embedded, SegmentKind, Topic};
     use tempfile::TempDir;
 
     const DIM: usize = 8;
@@ -1310,6 +1310,7 @@ mod tests {
             end_seconds: i as f64 + 1.0,
             text: format!("text for chunk {i}"),
             token_count: 10,
+            kind: SegmentKind::Caption,
         }
     }
 
@@ -1493,6 +1494,7 @@ mod tests {
             end_seconds: i as f64 + 1.0,
             text: format!("large chunk {i}"),
             token_count: 5,
+            kind: SegmentKind::Caption,
         };
         // LCG: a=6364136223846793005, c=1442695040888963407 (Knuth)
         let mut state = i as u64 ^ 0xdeadbeef_cafebabe;
