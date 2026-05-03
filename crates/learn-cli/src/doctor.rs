@@ -51,6 +51,7 @@ impl Check {
             detail: detail.into(),
         }
     }
+    #[allow(dead_code)]
     fn expected_fail(name: &str, detail: impl Into<String>) -> Self {
         Self {
             name: name.to_owned(),
@@ -96,6 +97,21 @@ pub fn check_bin(
     }
 }
 
+/// Report the in-tree AIMDS scanner as active. Always returns Pass.
+///
+/// Pattern counts come from the constants exported by `learn_synth::aimds`
+/// so the doctor line is always in sync with the real implementation.
+pub fn check_aimds_in_tree() -> Check {
+    Check::pass(
+        "AIMDS scanner",
+        format!(
+            "in-tree scanner active ({} inbound patterns, {} outbound)",
+            learn_synth::aimds::INBOUND_PATTERN_COUNT,
+            learn_synth::aimds::OUTBOUND_PATTERN_COUNT,
+        ),
+    )
+}
+
 /// Check that an env var is set to a non-empty value.
 pub fn check_env(name: &str, failure_hint: &str, env_fn: impl Fn(&str) -> Option<String>) -> Check {
     match env_fn(name) {
@@ -105,6 +121,7 @@ pub fn check_env(name: &str, failure_hint: &str, env_fn: impl Fn(&str) -> Option
 }
 
 /// Check for a binary that is optional (warning if absent, not a hard fail).
+#[allow(dead_code)]
 pub fn check_optional_bin(
     name: &str,
     absent_hint: &str,
@@ -313,11 +330,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
             "not set — `learn ask` will fail until you `export ANTHROPIC_API_KEY=...`",
             |k| std::env::var(k).ok(),
         ),
-        check_optional_bin(
-            "AIMDS binary",
-            "@ruflo/aidefence not found — outbound safety scan will be skipped (acceptable)",
-            |_| which_bin("aidefence"),
-        ),
+        check_aimds_in_tree(),
     ];
     for c in &checks_dep {
         print_check(c);

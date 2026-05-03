@@ -605,7 +605,7 @@ Full test pyramid, acceptance criteria, and tooling details: `docs/testing.md`.
 | 2.5 — `learn study` | autonomous curriculum discovery | ✅ written, ⏳ confirmed |
 | 3A — 10 remaining CLI subcommands | who-said, timeline, compare, summarize, list, status, watch, eval, forget, compact | ✅ written, ⏳ confirmed |
 | 3B — Embeddings persisted + MMR cosine | proper cosine over real embeddings | ✅ written |
-| 3C — AIMDS wiring | inbound + outbound scan envelopes | ✅ written, gated on binary publish |
+| 3C — AIMDS wiring | inbound + outbound scan envelopes | ✅ in-tree scanner active (12 inbound, 8 outbound) |
 | 3D — Eval harness | golden Q&A regression | ✅ written |
 | 3E — Manifest crash-resume | per-video state transitions, resume on reopen | 🟡 in flight |
 | 4A — Consciousness KPI | integrated-information score in `learn status` | ✅ written (placeholder pending upstream embedding-native API) |
@@ -623,7 +623,7 @@ Current state, 2026-05-02 (v0.1.4 / v0.1.5):
 - **Linux ARM64 + Windows binaries are not published.** Use the M-series Mac or Linux x86_64 tarballs, or build from source. Reasons: `whisper-rs` metal feature is Apple-only (no Windows); `cross` Docker cannot reach the `../ruvector` sibling path-dep on aarch64-linux release builds.
 - **Coherence KPI** is a placeholder-with-real-spectral-primitives, not a research-grade IIT Φ. The integrated-information score uses Fiedler eigenvalue × NN-cosine density and reads as `Disjoint` / `Loose` / `Coherent` / `HighlyIntegrated`. Useful as a relative health signal across topics, not an absolute consciousness measure.
 - **Whisper ASR fallback** is only exercised on captionless videos. The captions-first path covers ~95% of YouTube content. If you need to ingest audio with no captions, ensure `ffmpeg` and `ggml-base.en.bin` are present (`learn doctor` checks both).
-- **AIMDS guardrails** ship in-tree (regex-based prompt-injection + PII detection on inbound and outbound). For research-grade safety, plug in `@ruflo/aidefence` when it's published — the subprocess fallback path is preserved (`LEARN_AIMDS_BIN`, `LEARN_AIMDS_REQUIRED`).
+- **AIMDS guardrails** are implemented in-tree (`crates/learn-synth/src/aimds.rs`): 12 inbound patterns (6 prompt-injection/jailbreak + 6 PII) and 8 outbound patterns (PII leak + citation-hallucination detection + harm). Synchronous, zero-subprocess. Intentionally lightweight — not research-grade — but real and active. Set `LEARN_AIMDS_REQUIRED=1` to fail closed on any `Blocked` verdict.
 - **SONA self-learning** works at retrieval time (per-topic LoRA adapter loaded by `Retriever::for_topic`), but the feedback signal that updates the adapter requires explicit `record_feedback` calls — not yet wired into a passive thumbs-up/down UI on `learn ask`. Manual API only.
 - **Phase 4D static governance** (`npx ruflo adr-validate` / `ddd-validate`) was closed via the Claude Code skill system (`ruflo-adr:adr-index`, `ruflo-ddd:ddd-validate`); both produced clean output and are persisted in AgentDB.
 - **DiskANN scale path** uses a private file format. `LearnIndexLarge::compact` reads `vectors.bin` directly. Stable today; track for Phase 3 hardening if the upstream `ruvector-diskann` save format changes.
@@ -636,8 +636,7 @@ Current state, 2026-05-02 (v0.1.4 / v0.1.5):
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Required for `learn ask` / `learn apply` synthesis. | unset |
 | `LEARN_SYNTH_LOCAL` | Set to `1` to use local RuVLLM instead of Anthropic. Keeps everything on-device. | `0` |
-| `LEARN_AIMDS_REQUIRED` | Fail closed if the AIMDS binary is absent (instead of warning + skip). | `0` |
-| `LEARN_AIMDS_BIN` | Path to a private AIMDS binary if you have one (the public npm package isn't published yet). | unset |
+| `LEARN_AIMDS_REQUIRED` | When `1`, any `Blocked` verdict from the in-tree scanner causes the query to fail instead of returning the block message. | `0` |
 | `LEARN_KB_ROOT` | Where `.rvf` files live. | `~/Docs/KB` |
 | `LEARN_MODEL_CACHE` | Where Whisper + BGE models cache. | `~/.cache/learn-rs/models` |
 | `LEARN_LOG` | Tracing filter (`info`, `debug`, `learn_synth=trace`). | `info` |

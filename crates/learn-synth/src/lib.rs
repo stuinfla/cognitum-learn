@@ -328,7 +328,7 @@ impl Synthesizer for AnthropicSynthesizer {
         let answer = call_anthropic(&self.client, ASK_SYSTEM_PROMPT, user_msg, hits).await?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
-        match aimds::scan_text(&answer.text).await? {
+        match aimds::scan_outbound(&answer.text, hits).await? {
             ScanVerdict::Safe => Ok(answer),
             ScanVerdict::Blocked(reason) => Ok(Answer {
                 text: format!("AIMDS blocked output: {reason}"),
@@ -372,7 +372,7 @@ impl Synthesizer for AnthropicSynthesizer {
         let answer = call_anthropic(&self.client, APPLY_SYSTEM_PROMPT, user_msg, hits).await?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
-        match aimds::scan_text(&answer.text).await? {
+        match aimds::scan_outbound(&answer.text, hits).await? {
             ScanVerdict::Safe => Ok(answer),
             ScanVerdict::Blocked(reason) => Ok(Answer {
                 text: format!("AIMDS blocked output: {reason}"),
@@ -570,7 +570,7 @@ impl Synthesizer for RuvllmSynthesizer {
         let answer = self.generate_answer(&prompt, hits)?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
-        match aimds::scan_text(&answer.text).await? {
+        match aimds::scan_outbound(&answer.text, hits).await? {
             ScanVerdict::Safe => Ok(answer),
             ScanVerdict::Blocked(reason) => Ok(Answer {
                 text: format!("AIMDS blocked output: {reason}"),
@@ -617,7 +617,7 @@ impl Synthesizer for RuvllmSynthesizer {
         let answer = self.generate_answer(&prompt, hits)?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
-        match aimds::scan_text(&answer.text).await? {
+        match aimds::scan_outbound(&answer.text, hits).await? {
             ScanVerdict::Safe => Ok(answer),
             ScanVerdict::Blocked(reason) => Ok(Answer {
                 text: format!("AIMDS blocked output: {reason}"),
