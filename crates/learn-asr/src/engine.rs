@@ -139,6 +139,7 @@ impl WhisperEngine {
                 text,
                 confidence: Some(confidence),
                 speaker: None,
+                kind: learn_core::SegmentKind::Caption,
             });
         }
 

@@ -18,6 +18,10 @@ use learn_index::LearnIndex;
 
 /// Ingest a URL/path into the topic knowledge base.
 ///
+/// Convenience wrapper that disables frame captioning and uses the default
+/// max-frames cap. Called by tests and the `learn study` path when frame flags
+/// are not needed.
+///
 /// ## Resume behaviour (crash-recovery)
 ///
 /// Before starting work on a video the manifest is checked:
@@ -33,24 +37,30 @@ use learn_index::LearnIndex;
 ///
 /// Each successful stage writes the manifest atomically before the next stage
 /// begins, so a kill between stages leaves a valid checkpoint on disk.
+// Used by integration tests in main.rs; not called directly from the binary entry point.
+#[allow(dead_code)]
 pub async fn run_ingest(
     source: String,
     topic_override: Option<String>,
     kb_root: Utf8PathBuf,
     force: bool,
 ) -> Result<()> {
-    run_ingest_with_limit(source, topic_override, kb_root, force, None).await
+    run_ingest_with_limit(source, topic_override, kb_root, force, None, false, 60).await
 }
 
 /// Ingest with an optional playlist / channel / search limit.
 ///
 /// `limit` is forwarded to `resolve_to_videos` as `--playlist-end N`.
+/// `frames_enabled` controls Sonnet-vision frame captioning.
+/// `max_frames` caps the keyframe count per video.
 pub async fn run_ingest_with_limit(
     source: String,
     topic_override: Option<String>,
     kb_root: Utf8PathBuf,
     force: bool,
     limit: Option<usize>,
+    frames_enabled: bool,
+    max_frames: usize,
 ) -> Result<()> {
     use learn_acquire::{classify_source, resolve_to_videos, SourceKind};
 
@@ -68,9 +78,15 @@ pub async fn run_ingest_with_limit(
             "ingest: resolved multi-video source"
         );
         for url in urls {
-            if let Err(e) =
-                ingest_single_video(url.clone(), topic_override.clone(), kb_root.clone(), force)
-                    .await
+            if let Err(e) = ingest_single_video(
+                url.clone(),
+                topic_override.clone(),
+                kb_root.clone(),
+                force,
+                frames_enabled,
+                max_frames,
+            )
+            .await
             {
                 tracing::warn!(%url, error = %e, "failed to ingest video");
             }
@@ -78,15 +94,25 @@ pub async fn run_ingest_with_limit(
         return Ok(());
     }
 
-    ingest_single_video(source, topic_override, kb_root, force).await
+    ingest_single_video(
+        source,
+        topic_override,
+        kb_root,
+        force,
+        frames_enabled,
+        max_frames,
+    )
+    .await
 }
 
-/// Core single-video ingestion pipeline (acquire → transcribe → chunk → embed → index).
+/// Core single-video ingestion pipeline (acquire → transcribe → [frames] → chunk → embed → index).
 async fn ingest_single_video(
     source: String,
     topic_override: Option<String>,
     kb_root: Utf8PathBuf,
     force: bool,
+    frames_enabled: bool,
+    max_frames: usize,
 ) -> Result<()> {
     // 1. Resolve topic.
     let topic = match topic_override {
@@ -187,7 +213,7 @@ async fn ingest_single_video(
     })?;
 
     // 7. Parse captions; if the video was previously Acquired we try the cached VTT.
-    let segments = if let Some(vtt_path) = &acquired.captions_vtt {
+    let caption_segments = if let Some(vtt_path) = &acquired.captions_vtt {
         tracing::info!(path = %vtt_path, "parsing captions");
         learn_acquire::vtt::parse_vtt(vtt_path)?
     } else {
@@ -198,10 +224,22 @@ async fn ingest_single_video(
         vec![]
     };
 
+    // 7b. Optionally extract keyframes and caption them with Sonnet vision.
+    let frame_segments = if frames_enabled {
+        let video_path = acquired.raw_dir.join(format!("{video_id}.mp4"));
+        run_frame_captioning(&video_path, &acquired.raw_dir, max_frames).await
+    } else {
+        vec![]
+    };
+
+    let segments = learn_frames::merge_segments(caption_segments, frame_segments);
+
     if segments.is_empty() {
         tracing::warn!(
             %video_id,
-            "no transcript available; automatic captions not found and Whisper fallback not yet wired"
+            "no transcript or frame descriptions available; \
+             automatic captions not found, Whisper fallback not yet wired, \
+             and frame captioning produced no output"
         );
         // Record failed state so next run can skip cleanly without --force.
         let _ = index.upsert_video_state(VideoState {
@@ -210,7 +248,7 @@ async fn ingest_single_video(
             fetched_at: Some(now),
             indexed_at: None,
             chunk_count: 0,
-            error: Some("no transcript available".to_string()),
+            error: Some("no transcript or frames available".to_string()),
         });
         return Ok(());
     }
@@ -1003,11 +1041,14 @@ pub async fn run_study(
     for pick in &curriculum.picks {
         let url = pick.video.url.as_str().to_string();
         tracing::info!(video_id = %pick.video.video_id, rank = pick.rank, "study: ingesting");
-        if let Err(e) = run_ingest(
+        if let Err(e) = run_ingest_with_limit(
             url,
             Some(topic.as_str().to_string()),
             kb_root.clone(),
             false,
+            None,
+            true, // frames enabled by default in study mode
+            60,
         )
         .await
         {
@@ -1024,6 +1065,48 @@ pub async fn run_study(
         curriculum.picks.len()
     );
     Ok(())
+}
+
+// ── Frame captioning helper ──────────────────────────────────────────────────
+
+/// Extract keyframes from a video and caption them with Sonnet vision.
+///
+/// Returns an empty `Vec` (not an error) if the video path does not exist or if
+/// `ANTHROPIC_API_KEY` is absent — frame captioning is best-effort.
+async fn run_frame_captioning(
+    video_path: &camino::Utf8PathBuf,
+    out_dir: &camino::Utf8PathBuf,
+    max_frames: usize,
+) -> Vec<learn_core::Segment> {
+    if !video_path.exists() {
+        tracing::debug!(
+            path = %video_path,
+            "frame captioning: video file not found — skipping"
+        );
+        return vec![];
+    }
+
+    let extractor_cfg = learn_frames::ExtractorConfig {
+        max_frames,
+        ..Default::default()
+    };
+    let captioner_cfg = learn_frames::CaptionerConfig::default();
+
+    // Print cost estimate.
+    learn_frames::estimate_and_print_cost(video_path, &extractor_cfg);
+
+    match learn_frames::extract_and_caption(video_path, out_dir, &extractor_cfg, &captioner_cfg)
+        .await
+    {
+        Ok(segs) => {
+            tracing::info!(count = segs.len(), "frame descriptions produced");
+            segs
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "frame captioning failed — continuing without frames");
+            vec![]
+        }
+    }
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────

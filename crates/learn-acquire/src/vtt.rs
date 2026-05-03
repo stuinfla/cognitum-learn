@@ -130,6 +130,7 @@ fn push_or_merge(segments: &mut Vec<Segment>, start: f64, end: f64, text: String
         text,
         confidence: None,
         speaker: None,
+        kind: learn_core::SegmentKind::Caption,
     });
 }
 

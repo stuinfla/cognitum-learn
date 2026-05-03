@@ -133,7 +133,22 @@ pub struct Acquired {
     pub raw_dir: Utf8PathBuf,
 }
 
-/// One transcript line: timestamped text from captions or whisper.
+/// Discriminates the origin of a [`Segment`].
+///
+/// Serializes as a lowercase string. Old data that predates this field
+/// deserializes to [`SegmentKind::Caption`] via the `#[serde(default)]` on
+/// the containing [`Segment`] struct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentKind {
+    /// Text derived from auto-captions or Whisper ASR.
+    #[default]
+    Caption,
+    /// Text derived from Sonnet-vision frame description.
+    FrameDescription,
+}
+
+/// One transcript line: timestamped text from captions, whisper, or frame vision.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub start_seconds: f64,
@@ -141,6 +156,10 @@ pub struct Segment {
     pub text: String,
     pub confidence: Option<f32>,
     pub speaker: Option<String>,
+    /// Origin of this segment. Defaults to [`SegmentKind::Caption`] so that
+    /// JSON written before this field was added deserializes correctly.
+    #[serde(default)]
+    pub kind: SegmentKind,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -250,10 +269,41 @@ mod tests {
             text: "hello".into(),
             confidence: Some(0.9),
             speaker: None,
+            kind: SegmentKind::Caption,
         };
         let s = serde_json::to_string(&seg).unwrap();
         let back: Segment = serde_json::from_str(&s).unwrap();
         assert_eq!(seg.text, back.text);
+        assert_eq!(back.kind, SegmentKind::Caption);
+    }
+
+    /// Old JSON that lacks the `kind` field must deserialize to Caption.
+    #[test]
+    fn segment_kind_defaults_to_caption_for_old_json() {
+        let old_json = r#"{"start_seconds":0.0,"end_seconds":5.0,"text":"hello","confidence":null,"speaker":null}"#;
+        let seg: Segment = serde_json::from_str(old_json).unwrap();
+        assert_eq!(
+            seg.kind,
+            SegmentKind::Caption,
+            "missing 'kind' field must default to Caption"
+        );
+    }
+
+    /// FrameDescription round-trips correctly.
+    #[test]
+    fn segment_frame_description_round_trip() {
+        let seg = Segment {
+            start_seconds: 10.0,
+            end_seconds: 10.1,
+            text: "A diagram showing...".into(),
+            confidence: None,
+            speaker: None,
+            kind: SegmentKind::FrameDescription,
+        };
+        let s = serde_json::to_string(&seg).unwrap();
+        let back: Segment = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.kind, SegmentKind::FrameDescription);
+        assert!(s.contains("frame_description"));
     }
 
     #[test]

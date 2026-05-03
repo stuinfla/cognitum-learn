@@ -267,6 +267,7 @@ mod tests {
             text: text.to_string(),
             confidence: None,
             speaker: None,
+            kind: learn_core::SegmentKind::Caption,
         }
     }
 
@@ -525,6 +526,7 @@ mod tests {
                     text,
                     confidence: None,
                     speaker: None,
+                    kind: learn_core::SegmentKind::Caption,
                 }
             })
     }

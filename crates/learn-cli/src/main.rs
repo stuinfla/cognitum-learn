@@ -33,8 +33,12 @@ enum Cmd {
         since: Option<String>,
         #[arg(long)]
         limit: Option<usize>,
+        /// Disable Sonnet-vision frame captioning (enabled by default).
         #[arg(long)]
-        with_frames: bool,
+        no_frames: bool,
+        /// Maximum number of keyframes to extract per video (default: 60).
+        #[arg(long, default_value = "60")]
+        max_frames: usize,
         #[arg(long)]
         force: bool,
     },
@@ -127,16 +131,24 @@ async fn main() {
             topic,
             since,
             limit,
-            with_frames,
+            no_frames,
+            max_frames,
             force,
         } => {
             if since.is_some() {
                 tracing::warn!("--since is not yet implemented and will be ignored");
             }
-            if with_frames {
-                tracing::warn!("--with_frames is not yet implemented and will be ignored");
-            }
-            commands::run_ingest_with_limit(source, topic, kb_root, force, limit).await
+            let frames_enabled = !no_frames;
+            commands::run_ingest_with_limit(
+                source,
+                topic,
+                kb_root,
+                force,
+                limit,
+                frames_enabled,
+                max_frames,
+            )
+            .await
         }
         Cmd::Ask {
             topic,

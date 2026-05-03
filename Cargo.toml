@@ -8,6 +8,7 @@ members = [
     "crates/learn-chunk",
     "crates/learn-discover",
     "crates/learn-embed",
+    "crates/learn-frames",
     "crates/learn-index",
     "crates/learn-graph",
     "crates/learn-retrieve",
@@ -27,6 +28,7 @@ authors = ["Stuart Kerr <stuart@isovision.ai>"]
 
 [workspace.dependencies]
 learn-core      = { path = "crates/learn-core" }
+learn-frames    = { path = "crates/learn-frames" }
 learn-acquire   = { path = "crates/learn-acquire" }
 learn-asr       = { path = "crates/learn-asr" }
 learn-chunk     = { path = "crates/learn-chunk" }

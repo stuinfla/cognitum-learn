@@ -6,7 +6,23 @@ Point Learn-RV at a YouTube video — or a channel, playlist, or even a search l
 
 > **End-to-end verified 2026-05-02:** real ingest of `QZMljuD10sU` into `~/Docs/KB/claude-skills.rvf` (125 KB, 31 chunks) → cited Anthropic answer with `[1][2][3]` timestamp links.
 
-## 30-second quickstart
+## Two ways to use it
+
+### 🤖 As a Claude Code skill (no terminal — just talk)
+
+Once installed (one-time setup below), Learn-RV is a global Claude Code skill at `~/.claude/skills/learn-rv/`. In any Claude session, just describe what you want:
+
+> "Build me a knowledge base on French cooking technique."
+>
+> "Watch this video and remember it: https://youtu.be/QZMljuD10sU"
+>
+> "What did the speaker in the claude-skills topic say about progressive disclosure?"
+>
+> "Apply what we learned in french-cooking and draft a 3-course menu."
+
+Claude reads the skill's `SKILL.md`, picks the right `learn` subcommand, runs it, and shows you the cited answer. No need to remember flag syntax.
+
+### 💻 As a CLI (when you want direct control)
 
 ```bash
 learn ingest "https://youtu.be/QZMljuD10sU" --topic claude-skills
@@ -14,11 +30,22 @@ learn ask claude-skills "What does the speaker recommend for skill design?"
 learn list claude-skills
 ```
 
-Install (M-series Mac, from source):
+Run `learn --help` for all 14 subcommands, or `learn <command> --help` for any one of them.
+
+### One-time setup
 
 ```bash
+# 1. Clone and build the binary (M-series Mac):
+git clone https://github.com/stuinfla/learner-rv.git
+cd learner-rv
 cargo install --path crates/learn-cli
+
+# 2. (Optional but recommended) install the Claude Code skill:
+mkdir -p ~/.claude/skills/learn-rv
+cp .claude/skills/learn-rv/SKILL.md ~/.claude/skills/learn-rv/SKILL.md
 ```
+
+After step 1 you have the `learn` CLI. After step 2 it also works as a global Claude Code skill — both paths use the same binary and produce identical results.
 
 ![Learn-RV capability matrix: six capability cards covering ownership, citations, self-learning, on-device, RuVector-native, scale](assets/diagrams/capability-matrix.svg)
 
@@ -164,7 +191,7 @@ Prints the topic's vector count, segment count, file size, plus an integrated-in
 
 </details>
 
-Twelve Rust crates, single workspace, single binary. Every architectural choice is locked in code, not in prose: contracts live in `learn-core` and the rest of the system consumes them.
+Thirteen Rust crates, single workspace, single binary. Every architectural choice is locked in code, not in prose: contracts live in `learn-core` and the rest of the system consumes them. `learn-frames` joins the ingestion path as Phase 6: ffmpeg keyframe extraction + Sonnet-vision captioning produces `SegmentKind::FrameDescription` segments that merge with captions before chunking.
 
 ### Ingest pipeline
 
