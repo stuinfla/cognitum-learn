@@ -1444,9 +1444,15 @@ async fn run_sona_flush(
             .map(|t| t.content.as_str())
             .unwrap_or("session");
 
+        // Install a silent panic hook so upstream panics (e.g. empty MicroLoRA
+        // grad_up in lora.rs) never print a stack trace to the user's terminal.
+        // The original hook is restored immediately after the call.
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             embedder.record_feedback(query, &id_refs, learn_embed::Outcome::Helpful)
         }));
+        std::panic::set_hook(prev_hook);
         if result.is_err() {
             tracing::warn!("SONA adapter flush panicked (upstream bug); session data intact");
         }
@@ -1593,11 +1599,52 @@ pub async fn run_chat(
     // End session: flush SONA adapter once (gated to session-end per architect).
     // ruvector-sona can panic on freshly-zeroed MicroLoRA weights (upstream bug).
     // A failed flush is non-fatal — the session data is already persisted.
-    let session_id = session.id;
+    let footer = build_session_footer(&session, &kb_root, &topic_str);
     run_sona_flush(topic, embedder_path, session).await;
 
-    eprintln!("Session {} ended.", session_id);
+    println!("{footer}");
     Ok(())
+}
+
+// ── Session footer ────────────────────────────────────────────────────────────
+
+/// Build the friendly end-of-session summary printed after SONA flush.
+fn build_session_footer(
+    session: &learn_chat::ChatSession,
+    kb_root: &Utf8PathBuf,
+    topic_str: &str,
+) -> String {
+    let session_id = session.id;
+    let questions = session
+        .history
+        .iter()
+        .filter(|t| t.role == learn_chat::Role::User)
+        .count();
+    let answers = session
+        .history
+        .iter()
+        .filter(|t| t.role == learn_chat::Role::Assistant)
+        .count();
+    let citations: usize = session
+        .history
+        .iter()
+        .filter(|t| t.role == learn_chat::Role::Assistant)
+        .map(|t| t.citations.len())
+        .sum();
+    let turns = session.history.len();
+
+    let path = learn_chat::session_path(session_id, &session.topic, kb_root.as_ref());
+    // Replace $HOME with ~ for readability.
+    let home = dirs::home_dir().unwrap_or_default();
+    let display_path = if let Ok(rel) = path.as_std_path().strip_prefix(&home) {
+        format!("~/{}", rel.display())
+    } else {
+        path.to_string()
+    };
+
+    format!(
+        "\nSession ended cleanly.\n\n  Saved: {display_path}\n  Turns: {turns} ({questions} questions, {answers} answers, {citations} citations)\n\n  Resume any time:\n    learn chat {topic_str} --resume {session_id}\n"
+    )
 }
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
