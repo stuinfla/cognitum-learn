@@ -316,7 +316,10 @@ fn print_check(c: &Check) {
 /// Run all doctor checks and print the report.  Returns `true` when all
 /// required checks pass (exit 0 condition).
 pub async fn run_doctor(kb_root: &Path) -> bool {
-    println!("{}", "Learn-RV — Doctor (v0.1.3)".bold());
+    println!(
+        "{}",
+        format!("Learn-RV — Doctor (v{})", env!("CARGO_PKG_VERSION")).bold()
+    );
 
     // -- DEPENDENCIES --
     print_section("DEPENDENCIES");
@@ -580,7 +583,7 @@ async fn fetch_github_latest(repo_base: &str) -> Option<String> {
     );
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
-        .user_agent("learn-rv-doctor/0.1.3")
+        .user_agent(concat!("learn-rv-doctor/", env!("CARGO_PKG_VERSION")))
         .build()
         .ok()?;
     let resp = client.get(&api_url).send().await.ok()?;

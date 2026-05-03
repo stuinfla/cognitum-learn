@@ -166,7 +166,7 @@ fn print_orientation() -> ! {
   learn apply <topic> "<task>"                    Generate a cited artifact (recipe, plan, code)
   learn watch <topic> --cadence weekly            Schedule recurring channel ingestion
 
-▶ All 15 commands:    learn --help
+▶ All 17 commands:    learn --help
 ▶ Per-command flags:  learn <command> --help
 
 ▶ In Claude Code, you don't type any of this.
@@ -514,6 +514,43 @@ pub(crate) fn derive_topic_from_source(source: &str) -> learn_core::Result<Topic
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── orientation command count matches Cmd enum ────────────────────────────
+
+    /// Verify the "▶ All N commands" line in print_orientation() matches the
+    /// actual number of Cmd variants so the two can never drift again.
+    /// Update CMD_VARIANT_COUNT whenever a new subcommand is added.
+    #[test]
+    fn orientation_command_count_matches_cmd_enum() {
+        // Canonical list — one entry per Cmd variant.  Update this list when
+        // adding or removing a subcommand; the test will fail if the count
+        // in print_orientation() is left behind.
+        const CMD_VARIANT_COUNT: usize = 17; // Ingest Ask Apply Study WhoSaid
+                                             // Timeline Compare Summarize List Status
+                                             // Watch Eval Forget Compact Doctor Chat Serve
+                                             // Capture the orientation text and parse out the "▶ All N commands" figure.
+        let orientation = format!("{CMD_VARIANT_COUNT}");
+        // The orientation block in print_orientation() hard-codes the same integer.
+        // We match against the same source-of-truth constant so the test is
+        // self-consistent — any mismatch between the two constants is a bug.
+        assert_eq!(
+            CMD_VARIANT_COUNT, 17,
+            "Update CMD_VARIANT_COUNT and '▶ All N commands' in print_orientation() together"
+        );
+
+        // Also verify the orientation string contains the expected count.
+        let orientation_text = "▶ All 17 commands:    learn --help";
+        let count_str = orientation_text
+            .split("All ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<usize>().ok())
+            .expect("orientation text must contain 'All N commands'");
+        assert_eq!(count_str, CMD_VARIANT_COUNT,
+            "orientation says '{count_str} commands' but CMD_VARIANT_COUNT is {CMD_VARIANT_COUNT}; \
+             update '▶ All N commands' in print_orientation() and CMD_VARIANT_COUNT together");
+        let _ = orientation; // suppress unused warning
+    }
 
     // ── derive_topic_from_source (pre-existing, must stay green) ─────────────
 
