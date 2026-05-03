@@ -995,6 +995,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
 
 [[package]]
+name = "futures-executor"
+version = "0.3.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf29c38818342a3b26b5b923639e7b1f4a61fc5e76102d4b1981c6dc7a7579d"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1582,12 +1593,13 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "learn-acquire"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
  "learn-core",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -1598,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "learn-asr"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
@@ -1614,7 +1626,7 @@ dependencies = [
 
 [[package]]
 name = "learn-chunk"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "learn-core",
@@ -1625,7 +1637,7 @@ dependencies = [
 
 [[package]]
 name = "learn-cli"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "async-trait",
  "camino",
@@ -1653,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "learn-coherence"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "learn-core",
  "ruvector-coherence",
@@ -1664,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "learn-core"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
@@ -1677,7 +1689,7 @@ dependencies = [
 
 [[package]]
 name = "learn-discover"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1694,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "learn-embed"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
@@ -1714,7 +1726,7 @@ dependencies = [
 
 [[package]]
 name = "learn-eval"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1730,7 +1742,7 @@ dependencies = [
 
 [[package]]
 name = "learn-frames"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "camino",
@@ -1745,7 +1757,7 @@ dependencies = [
 
 [[package]]
 name = "learn-graph"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "camino",
  "learn-core",
@@ -1760,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "learn-index"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1777,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "learn-integration"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
@@ -1789,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "learn-reasoning"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "camino",
  "learn-core",
@@ -1801,7 +1813,7 @@ dependencies = [
 
 [[package]]
 name = "learn-retrieve"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "async-trait",
  "camino",
@@ -1816,7 +1828,7 @@ dependencies = [
 
 [[package]]
 name = "learn-synth"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1826,6 +1838,7 @@ dependencies = [
  "ruvllm",
  "serde",
  "serde_json",
+ "serial_test",
  "tokio",
  "tracing",
  "url",
@@ -3207,6 +3220,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scc"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
+dependencies = [
+ "sdd",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3220,6 +3242,12 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sdd"
+version = "3.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
 name = "security-framework"
@@ -3316,6 +3344,32 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "serial_test"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911bd979bf1070a3f3aa7b691a3b3e9968f339ceeec89e08c280a8a22207a32f"
+dependencies = [
+ "futures-executor",
+ "futures-util",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "scc",
+ "serial_test_derive",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a7d91949b85b0d2fb687445e448b40d322b6b3e4af6b44a29b21d9a5f33e6d9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

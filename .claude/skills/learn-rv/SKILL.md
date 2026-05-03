@@ -20,9 +20,14 @@ DO NOT invoke for general web research, document QA, or non-video sources.
 
 ## Binary
 
-Binary name: `learn` (installed via `cargo install --path "/Users/stuartkerr/Code/Video watcher skill/learn-rs/crates/learn-cli"`).
+Binary name: `learn`.
 
-Run `learn --help` to confirm install before first use. If absent, install from the workspace path above.
+Lookup order:
+1. `which learn` — already on PATH (normal after `cargo install` or the release `install.sh`)
+2. `~/.claude/skills/learn-rv/bin/learn` — symlinked by `install.sh` from a release tarball
+3. Neither found → install from the public release: https://github.com/stuinfla/learner-rv/releases
+
+Run `learn --help` to confirm install before first use.
 
 ## The 14 Subcommands
 
@@ -51,7 +56,7 @@ Run `learn --help` to confirm install before first use. If absent, install from 
 - Search-as-source: `ytsearch10:french cooking technique` (top-N hits)
 - Local file: any local `.mp4` / `.mkv` / `.webm` / `.vtt`
 
-Use `--limit N` with channels/playlists/search to bound ingest. `--since YYYY-MM-DD` and `--with_frames` are accepted but currently emit warnings (not yet implemented).
+Use `--limit N` with channels/playlists/search to bound ingest. `--since YYYY-MM-DD` is accepted but emits a warning (not yet implemented). Frame captioning is **on by default**; use `--no-frames` to disable or `--with-frames` to be explicit (no-op; conflicts with `--no-frames`).
 
 ## Output conventions
 
