@@ -43,9 +43,14 @@ Talk to Claude            Use the CLI              Use MCP Server
 </details>
 
 ```bash
-# 1. Install (M-series Mac — one command, no account needed)
+# 1. Install — pick your platform
+# M-series Mac:
 curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-aarch64-apple-darwin.tar.gz \
   | tar xz -C /tmp && /tmp/learn-aarch64-apple-darwin/install.sh
+# Linux x86_64:
+# curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz \
+#   | tar xz -C /tmp && /tmp/learn-x86_64-unknown-linux-gnu/install.sh
+# Windows: download learn-x86_64-pc-windows-msvc.zip from GitHub Releases
 
 # 2. Check everything is ready
 learn doctor
@@ -100,7 +105,7 @@ leaves.         │  RuVector stack.│  same commands.
 
 ## For Cognitum One Seed Owners
 
-**Learn-RV is built for the Seed.** Build a knowledge base on your Mac in minutes, push it to your Seed, and query it from any AI agent — anywhere, offline, no cloud required.
+**Learn-RV is built for the Seed.** Build a knowledge base on your computer in minutes, push it to your Seed, and query it from any AI agent — anywhere, offline, no cloud required.
 
 ![Cognitum One Seed workflow](assets/seed-workflow.svg)
 
@@ -108,7 +113,7 @@ leaves.         │  RuVector stack.│  same commands.
 <summary>Seed workflow (text version for accessibility)</summary>
 
 ```
-YOUR MAC                         TRANSFER              COGNITUM ONE SEED
+YOUR COMPUTER                    TRANSFER              COGNITUM ONE SEED
 ─────────────────────────────    ────────────────────  ─────────────────────────────
 learn ingest <video URLs>                              Seed RVF Store
 learn study "your topic"         learn push <topic>    native vector format

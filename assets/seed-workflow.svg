@@ -7,9 +7,9 @@
   <rect width="800" height="320" fill="#0d1117" rx="10"/>
   <text x="400" y="24" fill="#c9d1d9" font-family="monospace,sans-serif" font-size="14" font-weight="bold" text-anchor="middle" letter-spacing="1">COGNITUM ONE SEED · WORKFLOW</text>
 
-  <!-- Left zone: Your Mac -->
+  <!-- Left zone: Your Computer -->
   <rect x="10" y="36" width="300" height="272" rx="8" fill="#0d1b38" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="160" y="58" fill="#60a5fa" font-family="monospace,sans-serif" font-size="12" font-weight="bold" text-anchor="middle">YOUR MAC</text>
+  <text x="160" y="58" fill="#60a5fa" font-family="monospace,sans-serif" font-size="12" font-weight="bold" text-anchor="middle">YOUR COMPUTER</text>
 
   <!-- Mac box 1: ingest -->
   <rect x="22" y="66" width="276" height="68" rx="5" fill="#1a2d4a" stroke="#3b82f6" stroke-width="1"/>
