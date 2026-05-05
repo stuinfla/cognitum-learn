@@ -226,9 +226,13 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
           CARGO_EXCLUDE: ${{ matrix.cargo_exclude }}
-          # Linker for Linux ARM64 native cross-compilation (no Docker).
-          # All TLS uses rustls (pure Rust), so no OpenSSL sysroot is needed.
+          # ARM64 cross-compilation (no Docker).  These vars are only active
+          # when the target is aarch64-unknown-linux-gnu; Cargo and cc ignore
+          # them for all other targets.
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
         run: |
           cargo build --release --workspace $CARGO_EXCLUDE --target "$BUILD_TARGET"
 
