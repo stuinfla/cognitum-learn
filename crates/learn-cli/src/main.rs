@@ -61,6 +61,27 @@ enum Cmd {
         #[arg(long)]
         no_summary: bool,
     },
+    /// Bulk-ingest every supported file in a directory into a topic KB.
+    ///
+    /// Accepts: pdf, mp4, mp3, m4a, wav, ogg, txt, md.
+    /// The topic name is required (cannot be auto-derived from multiple files).
+    ///
+    /// Examples:
+    ///   learn import ~/Downloads/lectures/ --topic ml-course
+    ///   learn import ./papers/ --topic ai-safety --force
+    Import {
+        /// Directory containing files to ingest.
+        dir: Utf8PathBuf,
+        /// Topic name (required).
+        #[arg(long, required = true)]
+        topic: String,
+        /// Re-ingest already-indexed files.
+        #[arg(long)]
+        force: bool,
+        /// Skip the post-import status snapshot.
+        #[arg(long)]
+        no_summary: bool,
+    },
     /// Ask a question against a topic KB; answers come with citations.
     Ask {
         topic: String,
@@ -202,6 +223,9 @@ enum Cmd {
         /// Seed IP address or mDNS hostname. Omit to auto-discover via mDNS.
         #[arg(long)]
         seed: Option<String>,
+        /// When multiple Seeds are found, pick this 1-based index instead of prompting.
+        #[arg(long)]
+        seed_index: Option<usize>,
     },
     /// Flashcard-style Q&A review loop against the KB.
     ///
@@ -261,7 +285,7 @@ fn print_orientation() -> ! {
   learn cloud <topic>                   SVG word cloud of topic KB content
   learn map                             PCA galaxy of all KB chunks in 2-D concept space
 
-▶ All 21 commands:    learn --help
+▶ All 22 commands:    learn --help
 ▶ Per-command flags:  learn <command> --help
 
 ▶ In Claude Code, you don't type any of this.
@@ -367,7 +391,13 @@ async fn main() {
             print_html,
         } => commands::run_cloud(topic, out, print_html, kb_root),
         Cmd::Map { topic, out } => commands::run_map(topic, out, kb_root),
-        Cmd::Push { topic, seed } => push::run_push(topic, seed, kb_root).await,
+        Cmd::Import {
+            dir,
+            topic,
+            force,
+            no_summary,
+        } => commands::run_import(dir, topic, force, no_summary, kb_root).await,
+        Cmd::Push { topic, seed, seed_index } => push::run_push(topic, seed, seed_index, kb_root).await,
         Cmd::Quiz {
             topic,
             count,
@@ -399,8 +429,8 @@ async fn run_ask(
     let topic = Topic::new(&topic_str)?;
     let embedder_path = default_model_dir();
 
-    // 1. Open index.
-    let index = learn_index::LearnIndex::open(&kb_root, topic.clone())?;
+    // 1. Open index (read-only — can run while study/ingest is active).
+    let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
 
     // 2. Exit 2 if topic has never had any videos ingested (KB missing).
     if index.manifest().videos.is_empty() {
@@ -446,8 +476,8 @@ async fn run_apply(
     let topic = Topic::new(&topic_str)?;
     let embedder_path = default_model_dir();
 
-    // 1. Open index.
-    let index = learn_index::LearnIndex::open(&kb_root, topic.clone())?;
+    // 1. Open index (read-only — can run while study/ingest is active).
+    let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
 
     // 2. Build retriever with per-topic SONA adapter.
     let mut retriever =
@@ -639,7 +669,7 @@ mod tests {
         // Canonical list — one entry per Cmd variant.  Update this list when
         // adding or removing a subcommand; the test will fail if the count
         // in print_orientation() is left behind.
-        const CMD_VARIANT_COUNT: usize = 21; // Ingest Ask Apply Study WhoSaid
+        const CMD_VARIANT_COUNT: usize = 22; // Ingest Import Ask Apply Study WhoSaid
                                              // Timeline Compare Summarize List Status
                                              // Watch Eval Forget Compact Doctor Chat Serve Cloud Map Push Quiz
                                              // Capture the orientation text and parse out the "▶ All N commands" figure.
@@ -648,12 +678,12 @@ mod tests {
         // We match against the same source-of-truth constant so the test is
         // self-consistent — any mismatch between the two constants is a bug.
         assert_eq!(
-            CMD_VARIANT_COUNT, 21,
+            CMD_VARIANT_COUNT, 22,
             "Update CMD_VARIANT_COUNT and '▶ All N commands' in print_orientation() together"
         );
 
         // Also verify the orientation string contains the expected count.
-        let orientation_text = "▶ All 21 commands:    learn --help";
+        let orientation_text = "▶ All 22 commands:    learn --help";
         let count_str = orientation_text
             .split("All ")
             .nth(1)

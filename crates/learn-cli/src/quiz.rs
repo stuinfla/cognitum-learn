@@ -127,8 +127,8 @@ pub async fn run_quiz(
     let topic = Topic::new(&topic_str)?;
     let embedder_path = crate::default_model_dir();
 
-    // 1. Open index; exit early if KB has no data.
-    let index = learn_index::LearnIndex::open(&kb_root, topic.clone())?;
+    // 1. Open index read-only (can run while study/ingest is active).
+    let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
     if index.manifest().videos.is_empty() {
         eprintln!(
             "error: topic '{topic_str}' has no data (KB missing or not yet ingested).\n\

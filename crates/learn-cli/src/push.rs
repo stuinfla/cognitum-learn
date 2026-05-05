@@ -11,13 +11,17 @@ use learn_core::LearnError;
 use std::time::Duration;
 
 /// Resolve the seed address: return the provided address directly, or discover
-/// via mDNS if none is given.
+/// via mDNS if none is given.  When multiple Seeds are found and `seed_index`
+/// is `Some(n)` (1-based), the n-th result is chosen without prompting.
 ///
 /// Exposed for unit testing.
-pub(crate) async fn resolve_seed_address(seed: Option<String>) -> learn_core::Result<String> {
+pub(crate) async fn resolve_seed_address(
+    seed: Option<String>,
+    seed_index: Option<usize>,
+) -> learn_core::Result<String> {
     match seed {
         Some(addr) => Ok(addr),
-        None => discover_via_mdns().await,
+        None => discover_via_mdns(seed_index).await,
     }
 }
 
@@ -30,7 +34,9 @@ pub(crate) fn rvf_path_for_topic(topic: &str, kb_root: &Utf8PathBuf) -> Utf8Path
 
 /// Browse for `_cognitum._tcp.local.` with a 5-second timeout.
 /// Returns the address of the single device found, or errors on 0 or 2+.
-async fn discover_via_mdns() -> learn_core::Result<String> {
+/// When multiple Seeds are found and `seed_index` is `Some(n)` (1-based),
+/// the n-th result is chosen without an interactive prompt.
+async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<String> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
 
     let daemon = ServiceDaemon::new()
@@ -73,11 +79,23 @@ async fn discover_via_mdns() -> learn_core::Result<String> {
         )),
         1 => Ok(found.remove(0)),
         _ => {
-            // Multiple devices: print numbered list and ask user to choose.
+            // Multiple devices found.
+            if let Some(idx) = seed_index {
+                // Non-interactive: use the pre-chosen index.
+                if idx == 0 || idx > found.len() {
+                    return Err(LearnError::Acquire(format!(
+                        "--seed-index {idx} out of range (found {} Seeds) — use `--seed <address>` to specify one manually.",
+                        found.len()
+                    )));
+                }
+                return Ok(found.remove(idx - 1));
+            }
+            // Interactive fallback.
             eprintln!("Multiple Cognitum Seeds found:");
             for (i, addr) in found.iter().enumerate() {
                 eprintln!("  {}: {addr}", i + 1);
             }
+            eprintln!("Tip: re-run with `--seed-index N` to skip this prompt.");
             eprint!("Enter number: ");
             let mut line = String::new();
             std::io::stdin()
@@ -105,10 +123,11 @@ async fn discover_via_mdns() -> learn_core::Result<String> {
 pub async fn run_push(
     topic: String,
     seed: Option<String>,
+    seed_index: Option<usize>,
     kb_root: Utf8PathBuf,
 ) -> learn_core::Result<()> {
     // 1. Resolve seed address.
-    let address = resolve_seed_address(seed).await?;
+    let address = resolve_seed_address(seed, seed_index).await?;
 
     // 2. Find the .rvf file.
     let rvf_path = rvf_path_for_topic(&topic, &kb_root);
@@ -140,7 +159,16 @@ pub async fn run_push(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| LearnError::Acquire(format!("HTTP POST to {ingest_url} failed: {e}")))?;
+        .map_err(|e| {
+            let hint = if e.is_connect() {
+                " — Seed not reachable or API not running (check Seed is on and has RVF API enabled)"
+            } else if e.is_timeout() {
+                " — connection timed out (check network or increase --timeout)"
+            } else {
+                ""
+            };
+            LearnError::Acquire(format!("HTTP POST to {ingest_url} failed: {e}{hint}"))
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -177,13 +205,13 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_seed_address_uses_provided_address() {
-        let result = resolve_seed_address(Some("192.168.1.42".to_string())).await;
+        let result = resolve_seed_address(Some("192.168.1.42".to_string()), None).await;
         assert_eq!(result.unwrap(), "192.168.1.42");
     }
 
     #[tokio::test]
     async fn resolve_seed_address_uses_mdns_hostname() {
-        let result = resolve_seed_address(Some("cognitum.local".to_string())).await;
+        let result = resolve_seed_address(Some("cognitum.local".to_string()), None).await;
         assert_eq!(result.unwrap(), "cognitum.local");
     }
 
@@ -211,6 +239,7 @@ mod tests {
         let result = run_push(
             "nonexistent-topic".to_string(),
             Some("127.0.0.1".to_string()),
+            None,
             kb_root,
         )
         .await;

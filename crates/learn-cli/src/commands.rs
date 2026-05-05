@@ -461,6 +461,84 @@ async fn ingest_single_video(
     Ok((topic, chunks))
 }
 
+// ── Import (bulk directory ingestion) ────────────────────────────────────────
+
+/// Ingest every supported file in `dir` into a single topic KB.
+///
+/// Accepted extensions: pdf, mp4, mp3, m4a, wav, ogg, txt, md.
+/// Files are processed in sorted order; failures are logged but do not abort.
+pub async fn run_import(
+    dir: Utf8PathBuf,
+    topic: String,
+    force: bool,
+    no_summary: bool,
+    kb_root: Utf8PathBuf,
+) -> Result<()> {
+    const SUPPORTED: &[&str] = &["pdf", "mp4", "mp3", "m4a", "wav", "ogg", "txt", "md"];
+
+    let mut entries: Vec<Utf8PathBuf> = std::fs::read_dir(dir.as_std_path())
+        .map_err(LearnError::Io)?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| Utf8PathBuf::from_path_buf(e.path()).ok())
+        .filter(|p| {
+            p.extension()
+                .map(|ext| {
+                    let lower = ext.to_ascii_lowercase();
+                    SUPPORTED.iter().any(|&s| s == lower)
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+
+    entries.sort();
+
+    if entries.is_empty() {
+        eprintln!(
+            "no supported files found in {dir} (accepted: {})",
+            SUPPORTED.join(", ")
+        );
+        return Ok(());
+    }
+
+    let n = entries.len();
+    println!(
+        "Importing {} file{} into topic '{topic}':",
+        n,
+        if n == 1 { "" } else { "s" }
+    );
+
+    let mut ok = 0usize;
+    let mut errs = 0usize;
+
+    for path in &entries {
+        println!("── {} ──", path.file_name().unwrap_or("?"));
+        match run_ingest_with_frames(
+            path.to_string(),
+            Some(topic.clone()),
+            kb_root.clone(),
+            force,
+            None,
+            learn_frames::FramesArg::Auto,
+            60,
+            true,
+        )
+        .await
+        {
+            Ok(()) => ok += 1,
+            Err(e) => {
+                eprintln!("  error: {e}");
+                errs += 1;
+            }
+        }
+    }
+
+    println!("\nDone: {ok} ingested, {errs} failed.");
+    if !no_summary {
+        run_status(Some(topic), kb_root)?;
+    }
+    Ok(())
+}
+
 // ── WhoSaid ──────────────────────────────────────────────────────────────────
 
 /// Find every claim attributable to a speaker / entity whose name fuzzy-matches
@@ -525,7 +603,7 @@ pub async fn run_compare(
 ) -> Result<()> {
     let topic = Topic::new(&topic_str)?;
     let embedder_path = super::default_model_dir();
-    let index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;
+    let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
     retriever.refresh_bm25()?;
@@ -591,7 +669,7 @@ pub async fn run_summarize(
             .collect();
         emit_summary(&topic, &chunks, &kb_root, false).await;
     } else {
-        let index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;
+        let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
         let mut retriever =
             learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
         retriever.refresh_bm25()?;
@@ -698,7 +776,7 @@ struct ListRow {
 pub fn run_status(topic: Option<String>, kb_root: Utf8PathBuf) -> Result<()> {
     if let Some(topic_str) = topic {
         let topic = Topic::new(&topic_str)?;
-        let index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;
+        let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
         let stats = index.stats()?;
         let graph_entity_count = count_graph_entities(&kb_root, &topic);
         let manifest = load_manifest_opt(&kb_root, &topic);
@@ -729,7 +807,7 @@ pub fn run_status(topic: Option<String>, kb_root: Utf8PathBuf) -> Result<()> {
         for path in &rvf_files {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("?");
             if let Ok(topic) = Topic::new(stem) {
-                if let Ok(index) = LearnIndex::open(kb_root.as_ref(), topic.clone()) {
+                if let Ok(index) = LearnIndex::open_read(kb_root.as_ref(), topic.clone()) {
                     if let Ok(stats) = index.stats() {
                         println!(
                             "{:<30}  {:>8} vectors  {:>10} bytes",
@@ -1025,7 +1103,7 @@ pub async fn run_regression(topic_str: String, kb_root: Utf8PathBuf) -> Result<(
     learn_eval::validate_golden(&set)?;
 
     let embedder_path = super::default_model_dir();
-    let index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;
+    let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
     retriever.refresh_bm25()?;
@@ -1413,7 +1491,7 @@ fn run_list_all_topics(kb_root: Utf8PathBuf) -> Result<()> {
             Ok(t) => t,
             Err(_) => continue,
         };
-        let (vectors, videos) = LearnIndex::open(kb_root.as_ref(), topic.clone())
+        let (vectors, videos) = LearnIndex::open_read(kb_root.as_ref(), topic.clone())
             .ok()
             .and_then(|idx| idx.stats().ok().map(|s| (s.vector_count, idx)))
             .map(|(v, idx)| {
@@ -1620,8 +1698,8 @@ pub async fn run_chat(
     let embedder_path = super::default_model_dir();
     let k = crate::depth_to_k(&depth);
 
-    // Open index and build retriever.
-    let index = learn_index::LearnIndex::open(&kb_root, topic.clone())?;
+    // Open index read-only (can coexist with running study/ingest).
+    let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
     if index.manifest().videos.is_empty() {
         eprintln!("error: topic '{topic_str}' has no data (KB missing or not yet ingested)");
         std::process::exit(2);

@@ -529,7 +529,21 @@ async fn run_ytdlp(url: &str, raw_dir: &Utf8Path, download_video: bool) -> Resul
         info!(ytdlp.stdout = %stdout.trim());
     }
     if !stderr.is_empty() {
-        warn!(ytdlp.stderr = %stderr.trim());
+        // Filter known-benign yt-dlp warnings that always appear and are non-actionable.
+        let filtered: String = stderr
+            .lines()
+            .filter(|line| {
+                !line.contains("n challenge solving failed")
+                    && !line.contains("Remote components challenge solver")
+                    && !line.contains("--remote-components ejs")
+                    && !line.contains("yt-dlp/wiki/EJS")
+                    && !line.contains("Some formats may be missing")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !filtered.trim().is_empty() {
+            warn!(ytdlp.stderr = %filtered.trim());
+        }
     }
 
     // yt-dlp may exit non-zero even when info.json was successfully written.

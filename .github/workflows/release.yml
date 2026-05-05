@@ -87,7 +87,8 @@ jobs:
             ${{ runner.os }}-cargo-target-fmt-clippy-
 
       - name: cargo fmt --check
-        run: cargo fmt --all -- --check
+        run: |
+          cargo fmt             -p learn-cli             -p learn-core             -p learn-acquire             -p learn-asr             -p learn-chunk             -p learn-chat             -p learn-discover             -p learn-embed             -p learn-frames             -p learn-index             -p learn-graph             -p learn-retrieve             -p learn-synth             -p learn-eval             -p learn-coherence             -p learn-reasoning             -p learn-serve             -p learn-integration             -- --check
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -282,6 +283,12 @@ jobs:
             exit 1
           fi
           cp "$BIN" "$STAGE_DIR/bin/"
+          # Ad-hoc codesign on macOS so the binary isn't killed by Gatekeeper /
+          # Taskgated on macOS 15+ (exit 137 "Code Signature Invalid").
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            codesign --sign - --force --preserve-metadata=identifier,entitlements \
+              "$STAGE_DIR/bin/learn"
+          fi
           [ -f .claude/skills/learn-rv/SKILL.md ] && cp .claude/skills/learn-rv/SKILL.md "$STAGE_DIR/" || true
           [ -f README.md ]      && cp README.md      "$STAGE_DIR/" || true
           [ -f LICENSE-MIT ]    && cp LICENSE-MIT    "$STAGE_DIR/" || true

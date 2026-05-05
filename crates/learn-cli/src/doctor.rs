@@ -258,12 +258,41 @@ pub fn check_version(binary_version: &str, github_latest: Option<&str>, repo_url
         Some(latest) if latest == current => {
             Check::pass("version", format!("{current} — up to date ({repo_url})"))
         }
-        Some(latest) => Check::warn(
-            "version",
-            format!(
-                "{current} installed, {latest} available — `cargo install --path crates/learn-cli`"
-            ),
-        ),
+        Some(latest) => {
+            // Strip leading 'v' for semver comparison.
+            let local_ver = binary_version;
+            let remote_ver = latest.trim_start_matches('v');
+            let local_ahead = semver_gt(local_ver, remote_ver);
+            if local_ahead {
+                Check::pass(
+                    "version",
+                    format!("{current} — local build ahead of latest release ({latest})"),
+                )
+            } else {
+                Check::warn(
+                    "version",
+                    format!(
+                        "{current} installed, {latest} available — `cargo install --path crates/learn-cli`"
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/// True when `a` is semantically greater than `b`.
+/// Falls back to string comparison if either is not a valid semver triple.
+fn semver_gt(a: &str, b: &str) -> bool {
+    fn parse(s: &str) -> Option<(u64, u64, u64)> {
+        let mut parts = s.splitn(3, '.');
+        let major = parts.next()?.parse().ok()?;
+        let minor = parts.next()?.parse().ok()?;
+        let patch = parts.next().unwrap_or("0").parse().ok()?;
+        Some((major, minor, patch))
+    }
+    match (parse(a), parse(b)) {
+        (Some(av), Some(bv)) => av > bv,
+        _ => a > b,
     }
 }
 
@@ -723,6 +752,14 @@ mod tests {
         let c = check_version("0.1.2", Some("v0.1.3"), "https://github.com/x/y");
         assert_eq!(c.status, Status::Warn);
         assert!(c.detail.contains("v0.1.3"));
+    }
+
+    #[test]
+    fn check_version_local_ahead_is_pass() {
+        // Local build newer than latest release (e.g. built from main before tag)
+        let c = check_version("0.2.3", Some("v0.2.1"), "https://github.com/x/y");
+        assert_eq!(c.status, Status::Pass);
+        assert!(c.detail.contains("ahead"));
     }
 
     #[test]

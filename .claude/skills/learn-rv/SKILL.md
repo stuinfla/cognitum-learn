@@ -16,7 +16,7 @@ Invoke `learn` when the user:
 - Says things like "watch this video and remember it", "what did the speaker in <topic> say about Y", "build a KB on Z"
 - Wants to apply lessons from a topic to a real-world task ("use what we learned in <topic> to draft Y")
 
-DO NOT invoke for general web research, document QA, or non-video sources.
+DO NOT invoke for general web research or queries that don't involve ingesting and querying a KB.
 
 ## Binary
 
@@ -29,24 +29,32 @@ Lookup order:
 
 Run `learn --help` to confirm install before first use.
 
-## The 14 Subcommands
+## Key Subcommands (22 total — see `learn --help`)
 
 | Command | Purpose | Common pattern |
 |---|---|---|
-| `learn ingest <source> --topic <slug>` | Add videos to a KB | `learn ingest https://youtu.be/XYZ --topic my-topic` |
+| `learn ingest <source> --topic <slug>` | Add a single source to a KB | `learn ingest https://youtu.be/XYZ --topic my-topic` |
+| `learn import <dir> --topic <slug>` | Bulk-ingest a directory of files (pdf/mp4/mp3/txt/md) | `learn import ~/Downloads/lectures/ --topic ml-course` |
 | `learn ask <topic> "<question>"` | Cited answer | `learn ask my-topic "What does the speaker say about X?"` |
 | `learn apply <topic> "<task>"` | Apply lessons to a task | `learn apply french-cooking "draft a 3-course menu"` |
 | `learn study <topic> --depth quick\|medium\|deep` | Autonomous curriculum | `learn study french-cooking --depth medium` |
+| `learn chat <topic>` | Multi-turn grounded conversation | — |
+| `learn quiz <topic>` | Flashcard Q&A with spaced repetition | — |
+| `learn eval <topic>` | Run golden Q&A regression suite | — |
 | `learn list` | All known topics | — |
 | `learn status <topic>` | KB stats + coherence KPI | — |
 | `learn watch <topic> --cadence weekly\|hourly\|daily\|monthly` | Schedule recurring updates | — |
-| `learn forget <topic>` | Delete a KB (interactive prompt) | — |
+| `learn forget <topic>` | Delete a KB | — |
 | `learn compact <topic>` | Garbage-collect a KB | — |
 | `learn who-said <topic> "<exact quote>"` | Find speaker + timestamp | — |
 | `learn timeline <topic>` | Chronological view | — |
 | `learn compare <topic-a> <topic-b> "<theme>"` | Cross-topic compare | — |
 | `learn summarize <topic>` | One-paragraph corpus summary | — |
-| `learn regression <topic>` | Run golden Q&A eval | — |
+| `learn serve <topic>` | Start MCP server for Claude Code | — |
+| `learn push <topic> --seed <ip>` | Push .rvf to Cognitum Seed | `learn push french-cooking --seed 192.168.1.42` |
+| `learn cloud <topic>` | SVG word cloud | — |
+| `learn map` | 2-D galaxy map of all KBs | — |
+| `learn doctor` | Environment diagnostic | — |
 
 ## Source shapes accepted by `ingest`
 
@@ -95,13 +103,13 @@ Use `--limit N` with channels/playlists/search to bound ingest. `--since YYYY-MM
 - Path-deps to: `~/RuVector_Clean` via sibling symlink `../ruvector`
 - Phase tracking: `docs/adr/ADR-001-elite-roadmap.md`
 - Bounded contexts: `docs/ddd/DDD-001-bounded-contexts.md`
-- 12 workspace crates, 226+ tests, witness chain wired
+- 17 workspace crates, 311+ tests, witness chain wired
 
 ## When NOT to invoke
 
 - User wants generic web research → use WebSearch / WebFetch instead
-- User wants to chat ABOUT video content without persisting it → just summarise from the URL
-- User wants to query a non-video source (PDF, web article) → wrong tool
+- User wants to chat ABOUT content without persisting it → just summarise inline
+- User wants to query a source they haven't ingested yet → ingest it first, then query
 
 ## Don't make up answers
 

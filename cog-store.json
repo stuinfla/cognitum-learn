@@ -1,0 +1,35 @@
+{
+  "id": "learn-rv",
+  "name": "Learn-RV",
+  "version": "0.2.3",
+  "description": "Turn any YouTube video, PDF, or podcast into a queryable knowledge base — stored in RVF format, entirely on your Seed. Ask questions with timestamped citations. No cloud. No services.",
+  "author": "Stuart Kerr <stuart@isovision.ai>",
+  "license": "MIT",
+  "repository": "https://github.com/stuinfla/learner-rv",
+  "categories": ["knowledge", "ai", "productivity", "education"],
+  "tags": ["video", "youtube", "pdf", "podcast", "rvf", "knowledge-base", "mcp", "citations"],
+  "targets": ["cognitum-one"],
+  "min_seed_firmware": "1.0.0",
+  "entry_point": {
+    "type": "mcp",
+    "command": "learn serve {topic}",
+    "tools": [
+      { "name": "kb_query",       "description": "Semantic search over a topic KB" },
+      { "name": "kb_synthesize",  "description": "Generate a cited answer from retrieved chunks" },
+      { "name": "kb_list_videos", "description": "List all videos ingested into a topic" }
+    ]
+  },
+  "install": {
+    "type": "tarball",
+    "url": "https://github.com/stuinfla/learner-rv/releases/latest/download/learn-aarch64-apple-darwin.tar.gz",
+    "install_script": "install.sh",
+    "kb_root": "~/Docs/KB"
+  },
+  "env": {
+    "required": ["ANTHROPIC_API_KEY"],
+    "optional": ["LEARN_KB_ROOT", "LEARN_SYNTH_LOCAL", "LEARN_AIMDS_REQUIRED"]
+  },
+  "system_deps": ["yt-dlp", "ffmpeg"],
+  "screenshots": [],
+  "changelog": "https://github.com/stuinfla/learner-rv/releases"
+}

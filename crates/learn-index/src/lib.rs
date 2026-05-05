@@ -290,6 +290,17 @@ impl LearnIndex {
     /// The crash-recovery manifest is loaded from
     /// `<kb_root>/_meta/<topic>.json` (absent → empty default).
     pub fn open(kb_root: &Utf8Path, topic: Topic) -> Result<Self> {
+        Self::open_inner(kb_root, topic, false)
+    }
+
+    /// Like `open` but uses `RvfStore::open_readonly` — acquires a shared
+    /// reader lock so it can coexist with a concurrent `study` or `ingest`.
+    /// Use for all read-only commands: `ask`, `apply`, `quiz`, `status`, etc.
+    pub fn open_read(kb_root: &Utf8Path, topic: Topic) -> Result<Self> {
+        Self::open_inner(kb_root, topic, true)
+    }
+
+    fn open_inner(kb_root: &Utf8Path, topic: Topic, read_only: bool) -> Result<Self> {
         let rvf_path_utf8 = topic.rvf_path(kb_root);
         let rvf_path = PathBuf::from(rvf_path_utf8.as_str());
         let meta_path = Self::meta_path_for(kb_root, &topic);
@@ -302,7 +313,22 @@ impl LearnIndex {
         let witness_chain = load_witness(&witness_path)?;
 
         let store = if rvf_path.exists() {
-            Some(RvfStore::open(&rvf_path).map_err(|e| LearnError::Index(format!("{e:?}")))?)
+            let open_result = if read_only {
+                RvfStore::open_readonly(&rvf_path)
+            } else {
+                RvfStore::open(&rvf_path)
+            };
+            Some(open_result.map_err(|e| {
+                let msg = format!("{e:?}");
+                if msg.contains("LockHeld") {
+                    LearnError::Index(format!(
+                        "KB '{topic}' is locked by another learn process (study/ingest still running). \
+                         Wait for it to complete, then retry."
+                    ))
+                } else {
+                    LearnError::Index(msg)
+                }
+            })?)
         } else {
             None
         };
