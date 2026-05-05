@@ -1,10 +1,12 @@
 # Learn-RV
 
-**Turn any video, playlist, or topic into an Instant Expert — stored entirely on your device.**
+![Hero: videos and content become an instant expert on your Cognitum Seed](assets/hero.svg)
 
-Pick a subject you care about. Learn-RV finds the best videos, downloads them, reads every word, and builds a searchable knowledge base that lives in one file on your machine. Then ask it anything. It answers in plain language with citations back to the exact video moment.
+**You have a Cognitum One Seed. You want it to be a genius on something that matters to you.**
 
-No cloud account. No subscription. No background service. Just your knowledge, on your device.
+Pick any topic — cooking, investing, a medical condition, a sport, a language. Learn-RV finds the best videos and content on the internet, downloads everything, reads every word, and turns it into a searchable expert that lives on your Seed. Then ask it anything, in plain language, and it answers with citations back to the exact moment in the exact video.
+
+No cloud account. No subscription. No ongoing fees. Your knowledge, on your device, working offline.
 
 ![Learn-RV overview](assets/diagrams/top-level-invocation.svg)
 

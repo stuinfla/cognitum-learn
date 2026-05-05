@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 260" width="860" height="260" role="img" aria-label="Learn-RV concept: videos and content on the internet become an instant expert on your Cognitum Seed">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0f9ff"/>
+      <stop offset="100%" stop-color="#fdf4ff"/>
+    </linearGradient>
+    <linearGradient id="pill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="seed-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="860" height="260" fill="url(#bg)" rx="14"/>
+
+  <!-- ── LEFT: "Stuff you care about" ─────────────────────────────────── -->
+  <text x="148" y="28" fill="#6b7280" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="1">THINGS YOU WANT TO KNOW</text>
+
+  <!-- Video card -->
+  <rect x="30" y="38" width="110" height="68" rx="8" fill="white" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="30" y="38" width="110" height="30" rx="8" fill="#fef3c7"/>
+  <rect x="30" y="56" width="110" height="12" rx="0" fill="#fef3c7"/>
+  <polygon points="72,45 88,53 72,61" fill="#f59e0b"/>
+  <text x="85" y="82" fill="#374151" font-family="system-ui,sans-serif" font-size="10" font-weight="600" text-anchor="middle">YouTube Videos</text>
+  <text x="85" y="96" fill="#9ca3af" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">courses, tutorials</text>
+
+  <!-- Podcast card -->
+  <rect x="30" y="120" width="110" height="68" rx="8" fill="white" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="30" y="120" width="110" height="30" rx="8" fill="#ede9fe"/>
+  <rect x="30" y="138" width="110" height="12" rx="0" fill="#ede9fe"/>
+  <circle cx="85" cy="135" r="9" fill="#8b5cf6"/>
+  <rect x="82" y="126" width="6" height="12" rx="3" fill="white"/>
+  <text x="85" y="164" fill="#374151" font-family="system-ui,sans-serif" font-size="10" font-weight="600" text-anchor="middle">Podcasts &amp; Audio</text>
+  <text x="85" y="178" fill="#9ca3af" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">talks, interviews</text>
+
+  <!-- Files card -->
+  <rect x="155" y="79" width="110" height="68" rx="8" fill="white" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="155" y="79" width="110" height="30" rx="8" fill="#d1fae5"/>
+  <rect x="155" y="97" width="110" height="12" rx="0" fill="#d1fae5"/>
+  <rect x="195" y="84" width="18" height="22" rx="3" fill="#10b981"/>
+  <rect x="201" y="84" width="12" height="6" rx="0" fill="#059669"/>
+  <text x="210" y="123" fill="#374151" font-family="system-ui,sans-serif" font-size="10" font-weight="600" text-anchor="middle">Your Own Files</text>
+  <text x="210" y="137" fill="#9ca3af" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">PDFs, notes, docs</text>
+
+  <!-- ── CENTER ARROW + LEARN-RV pill ──────────────────────────────────── -->
+  <!-- Arrow left side -->
+  <line x1="278" y1="130" x2="318" y2="130" stroke="#d1d5db" stroke-width="2" stroke-dasharray="4,3"/>
+
+  <!-- Learn-RV pill -->
+  <rect x="320" y="104" width="220" height="52" rx="26" fill="url(#pill)"/>
+  <text x="430" y="126" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle">Learn-RV</text>
+  <text x="430" y="145" fill="#e0e7ff" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">finds · downloads · indexes · stores</text>
+
+  <!-- Tagline below pill -->
+  <text x="430" y="172" fill="#6b7280" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">Everything stays on your device.</text>
+  <text x="430" y="186" fill="#6b7280" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">No cloud account needed.</text>
+
+  <!-- Arrow right side -->
+  <line x1="542" y1="130" x2="582" y2="130" stroke="#d1d5db" stroke-width="2" stroke-dasharray="4,3"/>
+  <polygon points="578,125 588,130 578,135" fill="#9ca3af"/>
+
+  <!-- ── RIGHT: Cognitum Seed = Instant Expert ──────────────────────────── -->
+  <text x="712" y="28" fill="#6b7280" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="1">YOUR COGNITUM SEED</text>
+
+  <!-- Seed device -->
+  <rect x="630" y="38" width="164" height="140" rx="12" fill="url(#seed-grad)" stroke="#059669" stroke-width="2"/>
+  <rect x="645" y="52" width="134" height="80" rx="6" fill="rgba(0,0,0,0.15)"/>
+
+  <!-- Screen content: genius badge -->
+  <circle cx="712" cy="76" r="22" fill="white" opacity="0.9"/>
+  <text x="712" y="72" fill="#059669" font-family="system-ui,sans-serif" font-size="18" text-anchor="middle">★</text>
+  <text x="712" y="86" fill="#065f46" font-family="system-ui,sans-serif" font-size="8" font-weight="700" text-anchor="middle">EXPERT</text>
+
+  <text x="712" y="118" fill="white" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">Ask it anything.</text>
+  <text x="712" y="130" fill="#a7f3d0" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">Works offline.</text>
+
+  <!-- Port indicator -->
+  <rect x="700" y="170" width="24" height="4" rx="2" fill="rgba(255,255,255,0.4)"/>
+
+  <!-- Label below -->
+  <text x="712" y="202" fill="#065f46" font-family="system-ui,sans-serif" font-size="13" font-weight="700" text-anchor="middle">Instant Expert</text>
+  <text x="712" y="218" fill="#374151" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">on any topic you choose</text>
+
+  <!-- Topic bubbles -->
+  <rect x="590" y="230" width="80" height="20" rx="10" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="630" y="244" fill="#065f46" font-family="system-ui,sans-serif" font-size="9" font-weight="600" text-anchor="middle">French Cooking</text>
+  <rect x="680" y="230" width="80" height="20" rx="10" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="720" y="244" fill="#4c1d95" font-family="system-ui,sans-serif" font-size="9" font-weight="600" text-anchor="middle">Investing</text>
+  <rect x="770" y="230" width="76" height="20" rx="10" fill="#fce7f3" stroke="#f9a8d4" stroke-width="1"/>
+  <text x="808" y="244" fill="#831843" font-family="system-ui,sans-serif" font-size="9" font-weight="600" text-anchor="middle">Medicine</text>
+</svg>
