@@ -138,9 +138,12 @@ pub async fn run_ingest_with_frames(
 
         // One meta-summary for the whole playlist/channel/search run.
         if !no_summary {
-            if let Some(topic) = topic_for_summary {
-                emit_summary(&topic, &all_new_chunks, &kb_root, true).await;
+            if let Some(ref topic) = topic_for_summary {
+                emit_summary(topic, &all_new_chunks, &kb_root, true).await;
             }
+        }
+        if let Some(ref topic) = topic_for_summary {
+            maybe_auto_push(topic.as_str(), &kb_root).await;
         }
         return Ok(());
     }
@@ -159,7 +162,30 @@ pub async fn run_ingest_with_frames(
         emit_summary(&topic, &new_chunks, &kb_root, false).await;
     }
 
+    maybe_auto_push(topic.as_str(), &kb_root).await;
+
     Ok(())
+}
+
+/// If `seed.auto_push = true` and `seed.address` is configured, push the topic KB.
+/// Runs silently on failure — auto-push is best-effort, never blocks the ingest result.
+async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
+    let cfg = crate::config::LearnConfig::load();
+    if !cfg.seed_auto_push() {
+        return;
+    }
+    let Some(addr) = cfg.seed_address() else {
+        eprintln!(
+            "auto-push enabled but seed.address not configured.\n  \
+             Run: learn config set seed.address <ip>"
+        );
+        return;
+    };
+    println!("auto-pushing {topic} to Seed {addr}…");
+    if let Err(e) = crate::push::run_push(topic.to_owned(), Some(addr), None, kb_root.clone()).await
+    {
+        eprintln!("auto-push failed (ingest still succeeded): {e}");
+    }
 }
 
 /// Call `generate_summary` and print the post-ingest report to stdout.

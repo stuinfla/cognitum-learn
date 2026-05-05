@@ -340,6 +340,50 @@ fn print_check(c: &Check) {
     println!("  {} {:<22} {}", symbol(&c.status), c.name, c.detail);
 }
 
+// ── Cognitum Seed checks ──────────────────────────────────────────────────────
+
+/// Check Seed address configured + reachable.  Returns a list of Checks.
+pub async fn run_seed_checks() -> Vec<Check> {
+    let cfg = crate::config::LearnConfig::load();
+    let addr = cfg.seed_address();
+
+    let addr_check = match &addr {
+        None => Check::warn(
+            "Seed address",
+            "not configured — run: learn config set seed.address <ip>",
+        ),
+        Some(a) => Check::pass("Seed address", a.clone()),
+    };
+
+    let auto_push_check = if cfg.seed_auto_push() {
+        Check::pass("auto-push", "enabled — KB pushed to Seed after every ingest")
+    } else {
+        Check::warn(
+            "auto-push",
+            "disabled — run: learn config set seed.auto_push true",
+        )
+    };
+
+    let reach_check = if let Some(a) = &addr {
+        let url = format!("http://{a}/");
+        let reachable = probe_url(&url).await;
+        if reachable {
+            Check::pass("Seed reachable", format!("http://{a}/ OK"))
+        } else {
+            Check::warn(
+                "Seed reachable",
+                format!(
+                    "http://{a}/ unreachable — check Seed is powered on and on the same network"
+                ),
+            )
+        }
+    } else {
+        Check::warn("Seed reachable", "skipped (no address configured)")
+    };
+
+    vec![addr_check, auto_push_check, reach_check]
+}
+
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 
 /// Run all doctor checks and print the report.  Returns `true` when all
@@ -460,6 +504,14 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         ver_check.detail
     );
 
+    // -- COGNITUM SEED --
+    print_section("COGNITUM SEED");
+
+    let seed_checks = run_seed_checks().await;
+    for c in &seed_checks {
+        print_check(c);
+    }
+
     // -- CONFIG --
     print_section("CONFIG");
 
@@ -498,6 +550,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         .iter()
         .chain(checks_storage.iter())
         .chain(checks_net.iter())
+        .chain(seed_checks.iter())
         .collect();
     let passes = all_checks
         .iter()

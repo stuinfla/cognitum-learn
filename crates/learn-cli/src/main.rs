@@ -2,10 +2,12 @@
 
 mod cloud;
 mod commands;
+mod config;
 mod doctor;
 mod map;
 mod push;
 mod quiz;
+mod setup;
 pub(crate) mod summary;
 
 use camino::Utf8PathBuf;
@@ -212,12 +214,14 @@ enum Cmd {
     },
     /// Push a topic KB (.rvf) to a Cognitum One Seed over LAN.
     ///
-    /// Requires: Anthropic API key + Ruflo (RuVector ecosystem hard requirements).
+    /// For one-time setup with auto-push on every ingest, run:
+    ///   learn config set seed.address 192.168.1.42
+    ///   learn config set seed.auto_push true
     ///
     /// Examples:
+    ///   learn push french-cooking                        # auto-discover via mDNS
     ///   learn push french-cooking --seed 192.168.1.42
     ///   learn push french-cooking --seed cognitum.local
-    ///   learn push french-cooking                        # auto-discover via mDNS
     Push {
         topic: String,
         /// Seed IP address or mDNS hostname. Omit to auto-discover via mDNS.
@@ -247,6 +251,59 @@ enum Cmd {
         #[arg(long)]
         spaced: bool,
     },
+    /// Read or write persistent configuration.
+    ///
+    /// Config is stored at ~/.config/learn-rs/config.json.
+    /// Env vars LEARN_SEED_ADDRESS and LEARN_SEED_AUTO_PUSH override file values.
+    ///
+    /// Examples:
+    ///   learn config set seed.address 192.168.1.42
+    ///   learn config set seed.auto_push true
+    ///   learn config get seed.address
+    ///   learn config list
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+    /// Guided first-run setup wizard.
+    ///
+    /// Binds your Cognitum Seed in ~30 seconds. Asks for your Seed's IP address
+    /// and whether to enable auto-push after every ingest.
+    ///
+    /// Also runs automatically the very first time you use learn (no KB yet).
+    ///
+    /// Examples:
+    ///   learn setup             # interactive
+    ///   learn setup --yes       # non-interactive (accept defaults / skip Seed)
+    Setup {
+        /// Accept all defaults without prompting (skips Seed setup unless --seed is set).
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigAction {
+    /// Set a configuration key.
+    ///
+    /// Valid keys:
+    ///   seed.address    IP or hostname of your Cognitum Seed (e.g. 192.168.1.42)
+    ///   seed.auto_push  Push KB to Seed automatically after every ingest (true/false)
+    Set {
+        /// Config key: seed.address or seed.auto_push
+        key: String,
+        /// Value to set (e.g. 192.168.1.42 or true)
+        value: String,
+    },
+    /// Print the value of a configuration key.
+    ///
+    /// Valid keys: seed.address  seed.auto_push
+    Get {
+        /// Config key: seed.address or seed.auto_push
+        key: String,
+    },
+    /// List all configuration values and the config file path.
+    List,
 }
 
 /// Print the friendly orientation block and exit 0.
@@ -264,11 +321,16 @@ fn print_orientation() -> ! {
   pdftotext  (brew install poppler)     Required for PDF ingestion
   learn doctor                          Verify your setup
 
+▶ Cognitum Seed setup (do this once — then every ingest auto-pushes)
+  learn config set seed.address <ip>    Your Seed's IP or hostname (e.g. 192.168.1.42)
+  learn config set seed.auto_push true  Push KB to Seed automatically after every ingest
+  learn doctor                          Verify Seed is reachable
+
 ▶ 30-second quickstart
   learn ingest "<url>" --topic <name>   YouTube, PDF, podcast RSS, or web page
   learn study <topic> --depth medium    Auto-discover + ingest the best sources on any topic
   learn ask <topic> "<question>"        Cited answer from the KB
-  learn push <topic> --seed <ip>        Push .rvf KB to your Cognitum Seed over LAN
+  learn push <topic>                    Push topic KB to Seed (auto-discovered or use --seed <ip>)
 
 ▶ Sources accepted by ingest
   YouTube video / playlist / channel    https://youtu.be/… or @channel
@@ -285,7 +347,7 @@ fn print_orientation() -> ! {
   learn cloud <topic>                   SVG word cloud of topic KB content
   learn map                             PCA galaxy of all KB chunks in 2-D concept space
 
-▶ All 22 commands:    learn --help
+▶ All 24 commands:    learn --help
 ▶ Per-command flags:  learn <command> --help
 
 ▶ In Claude Code, you don't type any of this.
@@ -302,7 +364,14 @@ Repo:           https://github.com/stuinfla/learner-rv"#
 #[tokio::main]
 async fn main() {
     if std::env::args().count() == 1 {
-        print_orientation();
+        init_tracing();
+        let kb_root = resolve_kb_root(None);
+        // First-run: offer wizard before showing orientation.
+        let wizard_ran = setup::maybe_run_first_time(&kb_root).await;
+        if !wizard_ran {
+            print_orientation();
+        }
+        std::process::exit(0);
     }
     init_tracing();
     let cli = Cli::parse();
@@ -407,6 +476,8 @@ async fn main() {
             count,
             spaced,
         } => quiz::run_quiz(topic, count, spaced, kb_root).await,
+        Cmd::Config { action } => run_config(action),
+        Cmd::Setup { yes } => setup::run_setup(yes).await,
         // Doctor is dispatched above; this arm is unreachable but required by exhaustiveness.
         Cmd::Doctor => unreachable!("doctor dispatched before match"),
     };
@@ -516,6 +587,25 @@ async fn run_apply(
         None => print!("{text}"),
     }
 
+    Ok(())
+}
+
+fn run_config(action: ConfigAction) -> learn_core::Result<()> {
+    let mut cfg = config::LearnConfig::load();
+    match action {
+        ConfigAction::Set { key, value } => {
+            cfg.set_key(&key, &value)?;
+            cfg.save()?;
+            println!("✓ {key} = {value}");
+            println!("  saved to {}", config::LearnConfig::config_path().display());
+        }
+        ConfigAction::Get { key } => {
+            println!("{}", cfg.get_key(&key)?);
+        }
+        ConfigAction::List => {
+            config::run_config_list(&cfg)?;
+        }
+    }
     Ok(())
 }
 
@@ -673,26 +763,26 @@ mod tests {
         // Canonical list — one entry per Cmd variant.  Update this list when
         // adding or removing a subcommand; the test will fail if the count
         // in print_orientation() is left behind.
-        const CMD_VARIANT_COUNT: usize = 22; // Ingest Import Ask Apply Study WhoSaid
+        const CMD_VARIANT_COUNT: usize = 24; // Ingest Import Ask Apply Study WhoSaid
                                              // Timeline Compare Summarize List Status
-                                             // Watch Eval Forget Compact Doctor Chat Serve Cloud Map Push Quiz
+                                             // Watch Eval Forget Compact Doctor Chat Serve Cloud Map Push Quiz Config Setup
                                              // Capture the orientation text and parse out the "▶ All N commands" figure.
         let orientation = format!("{CMD_VARIANT_COUNT}");
         // The orientation block in print_orientation() hard-codes the same integer.
         // We match against the same source-of-truth constant so the test is
         // self-consistent — any mismatch between the two constants is a bug.
         assert_eq!(
-            CMD_VARIANT_COUNT, 22,
+            CMD_VARIANT_COUNT, 24,
             "Update CMD_VARIANT_COUNT and '▶ All N commands' in print_orientation() together"
         );
 
         // Also verify the orientation string contains the expected count.
-        let orientation_text = "▶ All 22 commands:    learn --help";
-        let count_str = orientation_text
+        let orientation_text = "▶ All 24 commands:    learn --help"; // keep in sync with print_orientation
+        let count_str: usize = orientation_text
             .split("All ")
             .nth(1)
             .and_then(|s| s.split_whitespace().next())
-            .and_then(|s| s.parse::<usize>().ok())
+            .and_then(|s| s.parse().ok())
             .expect("orientation text must contain 'All N commands'");
         assert_eq!(
             count_str, CMD_VARIANT_COUNT,

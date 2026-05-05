@@ -107,7 +107,7 @@ leaves.         │  RuVector stack.│  same commands.
 
 ## For Cognitum One Seed Owners
 
-**Learn-RV is built for the Seed.** Build a knowledge base on your computer in minutes, push it to your Seed, and query it from any AI agent — anywhere, offline, no cloud required.
+**Your Seed is where all your knowledge lives.** Build a knowledge base on your computer, and it lands on the Seed automatically — no cloud, no subscription, no conversion. Just your hardware.
 
 ![Cognitum One Seed workflow](assets/seed-workflow.svg)
 
@@ -115,36 +115,49 @@ leaves.         │  RuVector stack.│  same commands.
 <summary>Seed workflow (text version for accessibility)</summary>
 
 ```
-YOUR COMPUTER                    TRANSFER              COGNITUM ONE SEED
+YOUR COMPUTER                    AUTO-PUSH             COGNITUM ONE SEED
 ─────────────────────────────    ────────────────────  ─────────────────────────────
 learn ingest <video URLs>                              Seed RVF Store
-learn study "your topic"         learn push <topic>    native vector format
-learn ask / chat / apply    ──────────────────────→   zero conversion needed
+learn study "your topic"       → every ingest pushes  native vector format
+learn ask / chat / apply          automatically   →   zero conversion needed
 
-~/Docs/KB/<topic>.rvf            (or: cp <topic>.rvf  114-tool MCP proxy
-one file · fully portable         to Seed's RVF dir)  any MCP-capable agent
+~/Docs/KB/<topic>.rvf                                 114-tool MCP proxy
+one file · fully portable                             any MCP-capable agent
                                                        Ed25519 witness chain
                                                        cryptographic provenance
 ```
 
 </details>
 
-**Step-by-step for Seed owners:**
+**One-time setup — bind your Seed and forget it:**
 
 ```bash
-# On your Mac: pick a topic and build the expert
-learn study "Japanese knife sharpening"        # finds the best videos
-# or go direct:
-learn ingest "https://youtube.com/playlist?list=PLxxx" --topic knife-sharpening
+learn config set seed.address 192.168.1.42    # your Seed's IP (or mDNS name)
+learn config set seed.auto_push true          # push automatically after every ingest
+learn doctor                                  # confirm Seed is reachable
+```
 
-# Verify it's working
+After this, every `learn ingest` and `learn study` automatically pushes to your Seed. You never need to remember to push.
+
+**Manual push (if you prefer explicit control):**
+
+```bash
+learn push knife-sharpening                   # push on demand, auto-discovers Seed
+learn push knife-sharpening --seed 192.168.1.42  # explicit address
+```
+
+**Full workflow example:**
+
+```bash
+# Build the expert
+learn study "Japanese knife sharpening"       # finds + ingests best videos
 learn ask knife-sharpening "What angle for a 210mm gyuto?"
 
-# Push it to your Seed
-learn push knife-sharpening                    # auto-discovers Seed on local network
+# If auto-push is enabled, the Seed already has it.
+# If not, push manually:
+learn push knife-sharpening
 
 # Now any AI agent connected to the Seed can query it
-# The full knowledge base — including provenance — is on the Seed
 ```
 
 **Why it fits the Seed:**
