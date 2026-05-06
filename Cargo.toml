@@ -25,7 +25,8 @@ members = [
 version = "0.2.11"
 edition = "2021"
 rust-version = "1.87"
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
+license-file = "LICENSE"
 authors = ["Stuart Kerr <stuart@isovision.ai>"]
 
 [workspace.dependencies]
@@ -59,6 +60,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap        = { version = "4", features = ["derive", "env"] }
 camino      = { version = "1", features = ["serde1"] }
 url         = { version = "2", features = ["serde"] }
+axum        = { version = "0.7", features = ["macros"] }
+tower-http  = { version = "0.5", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [profile.release]
 opt-level = 3

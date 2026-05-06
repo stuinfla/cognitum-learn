@@ -8,6 +8,7 @@ mod map;
 mod push;
 mod quiz;
 mod setup;
+mod ui;
 pub(crate) mod summary;
 
 use camino::Utf8PathBuf;
@@ -265,6 +266,20 @@ enum Cmd {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Start the local web dashboard (opens in your browser).
+    ///
+    /// Serves the Learn-RV UI at http://127.0.0.1:7878 and opens it automatically.
+    /// The dashboard lets you ingest videos, browse topics, and ask questions
+    /// without typing CLI commands.
+    ///
+    /// Examples:
+    ///   learn ui
+    ///   learn ui --port 8080
+    Ui {
+        /// Port to listen on (default: 7878).
+        #[arg(long, default_value = "7878")]
+        port: u16,
+    },
     /// Guided first-run setup wizard.
     ///
     /// Binds your Cognitum Seed in ~30 seconds. Asks for your Seed's IP address
@@ -347,7 +362,7 @@ fn print_orientation() -> ! {
   learn cloud <topic>                   SVG word cloud of topic KB content
   learn map                             PCA galaxy of all KB chunks in 2-D concept space
 
-▶ All 24 commands:    learn --help
+▶ All 25 commands:    learn --help
 ▶ Per-command flags:  learn <command> --help
 
 ▶ In Claude Code, you don't type any of this.
@@ -478,6 +493,7 @@ async fn main() {
         } => quiz::run_quiz(topic, count, spaced, kb_root).await,
         Cmd::Config { action } => run_config(action),
         Cmd::Setup { yes } => setup::run_setup(yes).await,
+        Cmd::Ui { port } => ui::run_ui(kb_root, Some(port)).await,
         // Doctor is dispatched above; this arm is unreachable but required by exhaustiveness.
         Cmd::Doctor => unreachable!("doctor dispatched before match"),
     };
@@ -777,7 +793,7 @@ mod tests {
         );
 
         // Also verify the orientation string contains the expected count.
-        let orientation_text = "▶ All 24 commands:    learn --help"; // keep in sync with print_orientation
+        let orientation_text = "▶ All 25 commands:    learn --help"; // keep in sync with print_orientation
         let count_str: usize = orientation_text
             .split("All ")
             .nth(1)

@@ -23,6 +23,9 @@ camino.workspace = true
 blake3 = "1"
 chrono.workspace = true
 dirs = "6"
+axum.workspace = true
+tower-http.workspace = true
+tokio-stream.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
