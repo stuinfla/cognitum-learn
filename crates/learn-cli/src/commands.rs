@@ -168,7 +168,9 @@ pub async fn run_ingest_with_frames(
 }
 
 /// If `seed.auto_push = true` and `seed.address` is configured, push the topic KB.
-/// Runs silently on failure — auto-push is best-effort, never blocks the ingest result.
+/// Runs as a soft warning on failure — auto-push is best-effort, never blocks the
+/// ingest result. Pre-probes the Seed so a powered-off Seed produces a clean
+/// one-line message instead of a verbose HTTP error spew.
 async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
     let cfg = crate::config::LearnConfig::load();
     if !cfg.seed_auto_push() {
@@ -176,15 +178,30 @@ async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
     }
     let Some(addr) = cfg.seed_address() else {
         eprintln!(
-            "auto-push enabled but seed.address not configured.\n  \
+            "ℹ auto-push enabled but seed.address not configured.\n  \
              Run: learn config set seed.address <ip>"
         );
         return;
     };
+
+    // Cheap reachability probe (3-second timeout) before attempting the upload —
+    // turns a 30-second reqwest stack trace into a one-line, demo-friendly hint.
+    let probe_url = format!("http://{addr}/");
+    if !crate::doctor::probe_url(&probe_url).await {
+        eprintln!(
+            "ℹ Seed at {addr} is offline — KB saved locally at {kb_root}/{topic}.rvf.\n  \
+             Push manually when the Seed is online:  learn push {topic}"
+        );
+        return;
+    }
+
     println!("auto-pushing {topic} to Seed {addr}…");
     if let Err(e) = crate::push::run_push(topic.to_owned(), Some(addr), None, kb_root.clone()).await
     {
-        eprintln!("auto-push failed (ingest still succeeded): {e}");
+        eprintln!(
+            "ℹ auto-push to Seed failed (KB still saved locally): {e}\n  \
+             Retry manually:  learn push {topic}"
+        );
     }
 }
 
@@ -453,7 +470,7 @@ async fn ingest_single_video(
     })?;
 
     // 10. Embed and mark Embedded.
-    let embedder_path = super::default_model_dir();
+    let embedder_path = super::ensure_model_ready()?;
     let embed_cfg = learn_embed::EmbedConfig {
         model_dir: embedder_path.clone(),
         ..Default::default()
@@ -628,7 +645,7 @@ pub async fn run_compare(
     kb_root: Utf8PathBuf,
 ) -> Result<()> {
     let topic = Topic::new(&topic_str)?;
-    let embedder_path = super::default_model_dir();
+    let embedder_path = super::ensure_model_ready()?;
     let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
@@ -672,7 +689,7 @@ pub async fn run_summarize(
     kb_root: Utf8PathBuf,
 ) -> Result<()> {
     let topic = Topic::new(&topic_str)?;
-    let embedder_path = super::default_model_dir();
+    let embedder_path = super::ensure_model_ready()?;
 
     if let Some(video_id) = video {
         let graph = LearnGraph::open(kb_root.as_ref(), topic.clone())?;
@@ -1128,7 +1145,7 @@ pub async fn run_regression(topic_str: String, kb_root: Utf8PathBuf) -> Result<(
     let set = learn_eval::load_golden(&golden_path)?;
     learn_eval::validate_golden(&set)?;
 
-    let embedder_path = super::default_model_dir();
+    let embedder_path = super::ensure_model_ready()?;
     let index = LearnIndex::open_read(kb_root.as_ref(), topic.clone())?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
@@ -1721,7 +1738,7 @@ pub async fn run_chat(
     use std::io::{BufRead, Write};
 
     let topic = learn_core::Topic::new(&topic_str)?;
-    let embedder_path = super::default_model_dir();
+    let embedder_path = super::ensure_model_ready()?;
     let k = crate::depth_to_k(&depth);
 
     // Open index read-only (can coexist with running study/ingest).

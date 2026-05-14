@@ -327,47 +327,16 @@ fn print_orientation() -> ! {
     println!(
         r#"Learn-RV — Make your Cognitum Seed an expert in anything.
 
-  French cooking. Retirement planning. Travel hacking. Whatever you want to master —
-  ingest the best sources, store them in RuVector (.rvf), and query them forever.
-
-▶ Requirements
-  export ANTHROPIC_API_KEY=sk-ant-...   Required for ask / apply / quiz / study
-  yt-dlp, ffmpeg                        Required for YouTube / podcast ingestion
-  pdftotext  (brew install poppler)     Required for PDF ingestion
+▶ Demo in 4 commands
   learn doctor                          Verify your setup
+  learn study "<topic>"                 Discover + ingest the best sources on any topic
+  learn ask <topic> "<question>"        Cited answer from your knowledge base
+  learn push <topic>                    Push the .rvf to your Cognitum Seed
 
-▶ Cognitum Seed setup (do this once — then every ingest auto-pushes)
-  learn config set seed.address <ip>    Your Seed's IP or hostname (e.g. 192.168.1.42)
-  learn config set seed.auto_push true  Push KB to Seed automatically after every ingest
-  learn doctor                          Verify Seed is reachable
-
-▶ 30-second quickstart
-  learn ingest "<url>" --topic <name>   YouTube, PDF, podcast RSS, or web page
-  learn study <topic> --depth medium    Auto-discover + ingest the best sources on any topic
-  learn ask <topic> "<question>"        Cited answer from the KB
-  learn push <topic>                    Push topic KB to Seed (auto-discovered or use --seed <ip>)
-
-▶ Sources accepted by ingest
-  YouTube video / playlist / channel    https://youtu.be/… or @channel
-  Search                                ytsearch10:french cooking technique
-  PDF                                   https://example.com/paper.pdf  or  local file.pdf
-  Podcast RSS                           https://feeds.buzzsprout.com/123.rss
-  Web page                              https://example.com/article
-  Local audio / video                   /path/to/lecture.mp4
-
-▶ Going deeper
-  learn apply <topic> "<task>"          Generate a cited artifact (recipe, plan, code)
-  learn quiz <topic>                    Flashcard Q&A review loop (spaced repetition with --spaced)
-  learn watch <topic> --cadence weekly  Schedule recurring channel ingestion
-  learn cloud <topic>                   SVG word cloud of topic KB content
-  learn map                             PCA galaxy of all KB chunks in 2-D concept space
-
-▶ All 25 commands:    learn --help
-▶ Per-command flags:  learn <command> --help
-
-▶ In Claude Code, you don't type any of this.
-  Just say "make me an expert in retirement planning" or "quiz me on french cooking"
-  and the learn-rv skill runs the right commands for you.
+▶ Need more?
+  learn --help                          All 25 commands
+  learn <command> --help                Per-command flags
+  learn setup                           Re-run the first-time wizard (Seed address, API key, …)
 
 KB location:    ~/Docs/KB/<topic>.rvf   (RuVector binary — loads directly onto Cognitum Seed)
 Skill manifest: ~/.claude/skills/learn-rv/SKILL.md
@@ -518,7 +487,6 @@ async fn run_ask(
     kb_root: Utf8PathBuf,
 ) -> learn_core::Result<()> {
     let topic = Topic::new(&topic_str)?;
-    let embedder_path = default_model_dir();
 
     // 1. Open index (read-only — can run while study/ingest is active).
     let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
@@ -530,6 +498,7 @@ async fn run_ask(
     }
 
     // 3. Build retriever with per-topic SONA adapter.
+    let embedder_path = ensure_model_ready()?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
 
@@ -565,12 +534,12 @@ async fn run_apply(
     kb_root: Utf8PathBuf,
 ) -> learn_core::Result<()> {
     let topic = Topic::new(&topic_str)?;
-    let embedder_path = default_model_dir();
 
     // 1. Open index (read-only — can run while study/ingest is active).
     let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
 
     // 2. Build retriever with per-topic SONA adapter.
+    let embedder_path = ensure_model_ready()?;
     let mut retriever =
         learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
     retriever.refresh_bm25()?;
@@ -670,6 +639,33 @@ pub(crate) fn default_model_dir() -> Utf8PathBuf {
             .join("bge-large-en-v15"),
     )
     .unwrap_or_else(|_| Utf8PathBuf::from(".cache/learn-rs/models/bge-large-en-v15"))
+}
+
+/// Resolve the embedder model directory, downloading the BGE-large weights on
+/// first use. Honors `LEARN_EMBED_MODEL_DIR` (no download). Otherwise calls
+/// `learn_embed::ensure_default_model()`, which is a no-op when the cache is
+/// already populated and prints a one-time progress message when it isn't.
+///
+/// Use this in any path that loads the embedder (ingest / ask / chat / etc.).
+pub(crate) fn ensure_model_ready() -> learn_core::Result<Utf8PathBuf> {
+    if let Ok(env) = std::env::var("LEARN_EMBED_MODEL_DIR") {
+        if !env.is_empty() {
+            return Ok(Utf8PathBuf::from(env));
+        }
+    }
+    let dir = default_model_dir();
+    let already_present = dir.join("model.onnx").exists() && dir.join("tokenizer.json").exists();
+    if !already_present {
+        eprintln!(
+            "📦 Downloading BGE-large-en-v1.5 (≈1.3 GB, one-time setup)…\n   \
+             Cached at {dir}"
+        );
+    }
+    let path = learn_embed::ensure_default_model()?;
+    if !already_present {
+        eprintln!("✓ Embedder ready.");
+    }
+    Ok(path)
 }
 
 /// Produce a minimal RFC 3339 timestamp (UTC, second precision).

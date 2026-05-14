@@ -125,7 +125,6 @@ pub async fn run_quiz(
     kb_root: Utf8PathBuf,
 ) -> learn_core::Result<()> {
     let topic = Topic::new(&topic_str)?;
-    let embedder_path = crate::default_model_dir();
 
     // 1. Open index read-only (can run while study/ingest is active).
     let index = learn_index::LearnIndex::open_read(&kb_root, topic.clone())?;
@@ -136,6 +135,7 @@ pub async fn run_quiz(
         );
         std::process::exit(2);
     }
+    let embedder_path = crate::ensure_model_ready()?;
 
     // 2. Build retriever + BM25.
     let mut retriever =

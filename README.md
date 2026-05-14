@@ -45,16 +45,12 @@ Talk to Claude            Use the CLI              Use MCP Server
 </details>
 
 ```bash
-# 1. Install — pick your platform
-# M-series Mac:
-curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-aarch64-apple-darwin.tar.gz \
-  | tar xz -C /tmp && /tmp/learn-aarch64-apple-darwin/install.sh
-# Linux x86_64:
-# curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz \
-#   | tar xz -C /tmp && /tmp/learn-x86_64-unknown-linux-gnu/install.sh
-# Windows: download learn-x86_64-pc-windows-msvc.zip from GitHub Releases
+# 1. Install (any platform, ~5 min; needs Rust + RuVector sibling clone — see “One-time setup” below)
+git clone https://github.com/stuinfla/learner-rv.git && cd learner-rv
+git clone https://github.com/ruvnet/RuVector.git ../RuVector
+cargo install --path crates/learn-cli
 
-# 2. Check everything is ready
+# 2. Check everything is ready (also auto-fetches the BGE embedder on first use, ~1.3 GB)
 learn doctor
 
 # 3. Pick a topic and let Learn-RV find the best videos
@@ -70,6 +66,8 @@ learn chat sous-vide
 ```
 
 > Your knowledge base lives at `~/Docs/KB/sous-vide.rvf` — one file you own completely.
+>
+> Prebuilt M-series-Mac / Linux-x86_64 binaries are also available — see [📂 One-time setup](#-one-time-setup) below. The `cargo install --path` route above is always the freshest build.
 
 ---
 
@@ -424,7 +422,18 @@ Per-topic isolation is total. Drop a topic by deleting one file. Move the whole 
 
 <details><summary>📂 One-time setup</summary>
 
-**Easy path (M-series Mac or Linux x86_64 — no Rust required):**
+**Build from source — recommended (always the latest, any platform, Rust toolchain required):**
+
+```bash
+git clone https://github.com/stuinfla/learner-rv.git
+cd learner-rv
+git clone https://github.com/ruvnet/RuVector.git ../RuVector
+cargo install --path crates/learn-cli
+mkdir -p ~/.claude/skills/learn-rv
+cp .claude/skills/learn-rv/SKILL.md ~/.claude/skills/learn-rv/SKILL.md
+```
+
+**Prebuilt binaries (faster, but may lag behind `main` — M-series Mac / Linux x86_64):**
 
 ```bash
 # M-series Mac
@@ -437,17 +446,6 @@ curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-x8
 ```
 
 `install.sh` symlinks the binary to `~/.cargo/bin/learn` and drops the Claude Code skill into `~/.claude/skills/learn-rv/`.
-
-**Build from source (any platform, Rust toolchain required):**
-
-```bash
-git clone https://github.com/stuinfla/learner-rv.git
-cd learner-rv
-git clone https://github.com/ruvnet/RuVector.git ../RuVector
-cargo install --path crates/learn-cli
-mkdir -p ~/.claude/skills/learn-rv
-cp .claude/skills/learn-rv/SKILL.md ~/.claude/skills/learn-rv/SKILL.md
-```
 
 **Runtime dependencies:**
 ```bash
