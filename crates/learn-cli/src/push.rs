@@ -1,14 +1,33 @@
-//! `learn push <topic> --seed <address>` — transfer a `.rvf` KB to a
-//! Cognitum One Seed device over LAN.
+//! `learn push <topic> --seed <address> [--token <bearer>]` — push a topic's
+//! vectors to a Cognitum One Seed device over LAN (or USB-gadget link).
 //!
-//! Requirements: Anthropic API key + Ruflo (RuVector ecosystem).
-//! The Seed must expose the standard Cognitum HTTP API on port 80.
+//! Matches the Seed's published JSON ingest contract:
+//!
+//! ```text
+//! POST http://{address}/api/v1/store/ingest
+//! Authorization: Bearer <token>      (optional on USB-gadget link)
+//! Content-Type: application/json
+//! Body: {"vectors":[[id_u64, [f32, f32, ...]], ...]}
+//! ```
+//!
+//! Vectors are batched to stay under the Seed's 64 KB HTTP body limit
+//! (`TARGET_BATCH_BYTES` = 50 000 bytes leaves headroom for JSON overhead).
 
 #![deny(unsafe_code)]
 
 use camino::Utf8PathBuf;
-use learn_core::LearnError;
+use learn_core::{LearnError, Topic};
+use learn_index::LearnIndex;
+use serde::Serialize;
 use std::time::Duration;
+
+/// Stay safely under the Seed's 64 KB body cap.
+const TARGET_BATCH_BYTES: usize = 50_000;
+
+#[derive(Serialize)]
+struct IngestBody<'a> {
+    vectors: Vec<(u64, &'a [f32])>,
+}
 
 /// Resolve the seed address: return the provided address directly, or discover
 /// via mDNS if none is given.  When multiple Seeds are found and `seed_index`
@@ -33,9 +52,6 @@ pub(crate) fn rvf_path_for_topic(topic: &str, kb_root: &Utf8PathBuf) -> Utf8Path
 }
 
 /// Browse for `_cognitum._tcp.local.` with a 5-second timeout.
-/// Returns the address of the single device found, or errors on 0 or 2+.
-/// When multiple Seeds are found and `seed_index` is `Some(n)` (1-based),
-/// the n-th result is chosen without an interactive prompt.
 async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<String> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
 
@@ -56,7 +72,6 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
         }
         match receiver.recv_timeout(remaining) {
             Ok(ServiceEvent::ServiceResolved(info)) => {
-                // Use the first IPv4 address if available, else the hostname.
                 let addr = info
                     .get_addresses_v4()
                     .into_iter()
@@ -66,11 +81,10 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
                 found.push(addr);
             }
             Ok(_) => {}
-            Err(_) => break, // timeout or channel closed
+            Err(_) => break,
         }
     }
 
-    // Stop the browse to free resources; ignore errors (best-effort cleanup).
     let _ = daemon.stop_browse("_cognitum._tcp.local.");
 
     match found.len() {
@@ -79,9 +93,7 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
         )),
         1 => Ok(found.remove(0)),
         _ => {
-            // Multiple devices found.
             if let Some(idx) = seed_index {
-                // Non-interactive: use the pre-chosen index.
                 if idx == 0 || idx > found.len() {
                     return Err(LearnError::Acquire(format!(
                         "--seed-index {idx} out of range (found {} Seeds) — use `--seed <address>` to specify one manually.",
@@ -90,7 +102,6 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
                 }
                 return Ok(found.remove(idx - 1));
             }
-            // Interactive fallback.
             eprintln!("Multiple Cognitum Seeds found:");
             for (i, addr) in found.iter().enumerate() {
                 eprintln!("  {}: {addr}", i + 1);
@@ -114,22 +125,20 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
     }
 }
 
-/// Push a topic KB (`.rvf`) to a Cognitum One Seed over LAN.
+/// Push a topic's vectors to a Cognitum One Seed over LAN.
 ///
-/// # Requirements
-/// - Anthropic API key (for the broader learn-rv ecosystem).
-/// - Ruflo installed (RuVector ecosystem hard requirement).
-/// - The Seed device must be reachable and running the Cognitum HTTP API.
+/// `token` is the bearer returned by the Seed's pairing flow
+/// (`POST /api/v1/pair`).  USB-gadget-link clients on `169.254.x.x` may
+/// be auto-trusted without a token; LAN clients require one.
 pub async fn run_push(
     topic: String,
     seed: Option<String>,
     seed_index: Option<usize>,
+    token: Option<String>,
     kb_root: Utf8PathBuf,
 ) -> learn_core::Result<()> {
-    // 1. Resolve seed address.
     let address = resolve_seed_address(seed, seed_index).await?;
 
-    // 2. Find the .rvf file.
     let rvf_path = rvf_path_for_topic(&topic, &kb_root);
     if !rvf_path.exists() {
         return Err(LearnError::Acquire(format!(
@@ -138,61 +147,93 @@ pub async fn run_push(
         )));
     }
 
-    // 3. Read the file.
-    let file_bytes = std::fs::read(rvf_path.as_std_path()).map_err(LearnError::Io)?;
-    let file_size = file_bytes.len();
-    let filename = format!("{topic}.rvf");
+    let topic_obj = Topic::new(&topic)
+        .map_err(|e| LearnError::Acquire(format!("invalid topic slug '{topic}': {e}")))?;
+    let index = LearnIndex::open_read(kb_root.as_path(), topic_obj)
+        .map_err(|e| LearnError::Acquire(format!("failed to open KB '{topic}': {e}")))?;
 
-    println!("pushing {filename} to {address}…");
+    let vectors: Vec<(u64, &[f32])> = index.all_embeddings().collect();
+    let total = vectors.len();
+    if total == 0 {
+        return Err(LearnError::Acquire(format!(
+            "topic '{topic}' has no embeddings — nothing to push."
+        )));
+    }
+    let dim = vectors[0].1.len();
 
-    // 4. POST to /api/v1/store/ingest as multipart.
+    println!("pushing {total} vectors ({dim}-dim) to {address}…");
+
     let client = reqwest::Client::new();
-    let part = reqwest::multipart::Part::bytes(file_bytes)
-        .file_name(filename.clone())
-        .mime_str("application/octet-stream")
-        .map_err(|e| LearnError::Acquire(format!("failed to build multipart part: {e}")))?;
-    let form = reqwest::multipart::Form::new().part("file", part);
-
     let ingest_url = format!("http://{address}/api/v1/store/ingest");
-    let response = client
-        .post(&ingest_url)
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|e| {
+
+    // ~14 chars per f32 + tuple overhead; pick a batch size that stays under the cap.
+    let bytes_per_vec = dim * 14 + 32;
+    let batch_size = TARGET_BATCH_BYTES.saturating_div(bytes_per_vec).max(1);
+
+    let mut sent = 0usize;
+    let mut batch_no = 0usize;
+    for chunk in vectors.chunks(batch_size) {
+        batch_no += 1;
+        let body = IngestBody {
+            vectors: chunk.to_vec(),
+        };
+        let body_json = serde_json::to_string(&body)
+            .map_err(|e| LearnError::Acquire(format!("JSON encode failed: {e}")))?;
+
+        let mut req = client
+            .post(&ingest_url)
+            .header("Content-Type", "application/json")
+            .body(body_json);
+        if let Some(t) = token.as_deref() {
+            req = req.header("Authorization", format!("Bearer {t}"));
+        }
+
+        let response = req.send().await.map_err(|e| {
             let hint = if e.is_connect() {
-                " — Seed not reachable or API not running (check Seed is on and has RVF API enabled)"
+                " — Seed not reachable (check it's powered on and on the same network or USB link)"
             } else if e.is_timeout() {
-                " — connection timed out (check network or increase --timeout)"
+                " — connection timed out"
             } else {
                 ""
             };
             LearnError::Acquire(format!("HTTP POST to {ingest_url} failed: {e}{hint}"))
         })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(LearnError::Acquire(format!(
-            "Seed rejected the upload (HTTP {status}): {body}"
-        )));
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let hint = if status.as_u16() == 401 {
+                "\n  hint: pair this client first via `POST /api/v1/pair/window` then `POST /api/v1/pair`, \
+                 and pass the returned token with `--token <TOKEN>` (or set `LEARN_SEED_TOKEN`)."
+            } else if status.as_u16() == 409 {
+                "\n  hint: Seed store dimension does not match the KB's embedding dimension. \
+                 Reset the Seed store or restart the agent with `--dimension <N>`."
+            } else {
+                ""
+            };
+            return Err(LearnError::Acquire(format!(
+                "Seed rejected batch {batch_no} (HTTP {status}): {body}{hint}"
+            )));
+        }
+        sent += chunk.len();
+        println!(
+            "  batch {batch_no}: ingested {} vectors ({sent}/{total})",
+            chunk.len()
+        );
     }
 
-    println!("✓ pushed ({file_size} bytes) — verifying…");
+    println!("✓ pushed {sent} vectors ({dim}-dim) — verifying store status…");
 
-    // 5. GET status.
-    let status_url = format!("http://{address}/api/v1/store/status/{topic}");
+    let status_url = format!("http://{address}/api/v1/status");
     let status_response = client
         .get(&status_url)
         .send()
         .await
         .map_err(|e| LearnError::Acquire(format!("HTTP GET {status_url} failed: {e}")))?;
-
     let status_body = status_response
         .text()
         .await
         .map_err(|e| LearnError::Acquire(format!("failed to read status response: {e}")))?;
-
     println!("{status_body}");
     Ok(())
 }
@@ -251,6 +292,7 @@ mod tests {
             "nonexistent-topic".to_string(),
             Some("127.0.0.1".to_string()),
             None,
+            None,
             kb_root,
         )
         .await;
@@ -268,5 +310,20 @@ mod tests {
                 "error should suggest learn ingest; got: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn ingest_body_serializes_to_seed_contract() {
+        // Verify the wire format matches the Cognitum Seed's published shape:
+        //   {"vectors":[[id_u64,[f32,f32,...]],...]}
+        let v: Vec<f32> = vec![0.1, 0.2, 0.3];
+        let body = IngestBody {
+            vectors: vec![(9999u64, v.as_slice())],
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(
+            json.starts_with("{\"vectors\":[[9999,[0.1,"),
+            "ingest body does not match seed contract: {json}"
+        );
     }
 }

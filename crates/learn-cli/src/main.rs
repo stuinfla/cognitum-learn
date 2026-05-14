@@ -231,6 +231,11 @@ enum Cmd {
         /// When multiple Seeds are found, pick this 1-based index instead of prompting.
         #[arg(long)]
         seed_index: Option<usize>,
+        /// Bearer token from the Seed's pairing flow (`POST /api/v1/pair`).
+        /// Required for LAN clients. USB-gadget-link clients on 169.254.x.x may
+        /// be auto-trusted and can omit. Falls back to `LEARN_SEED_TOKEN`.
+        #[arg(long, env = "LEARN_SEED_TOKEN")]
+        token: Option<String>,
     },
     /// Flashcard-style Q&A review loop against the KB.
     ///
@@ -454,7 +459,8 @@ async fn main() {
             topic,
             seed,
             seed_index,
-        } => push::run_push(topic, seed, seed_index, kb_root).await,
+            token,
+        } => push::run_push(topic, seed, seed_index, token, kb_root).await,
         Cmd::Quiz {
             topic,
             count,

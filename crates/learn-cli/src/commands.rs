@@ -196,7 +196,9 @@ async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
     }
 
     println!("auto-pushing {topic} to Seed {addr}…");
-    if let Err(e) = crate::push::run_push(topic.to_owned(), Some(addr), None, kb_root.clone()).await
+    let token = std::env::var("LEARN_SEED_TOKEN").ok();
+    if let Err(e) =
+        crate::push::run_push(topic.to_owned(), Some(addr), None, token, kb_root.clone()).await
     {
         eprintln!(
             "ℹ auto-push to Seed failed (KB still saved locally): {e}\n  \

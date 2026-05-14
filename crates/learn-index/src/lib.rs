@@ -578,6 +578,14 @@ impl LearnIndex {
             .collect()
     }
 
+    /// Iterate every `(u64 id, &[f32])` pair currently in the embedding map.
+    ///
+    /// Used by `learn push` to forward the topic's vectors to a Cognitum Seed
+    /// via the seed's published JSON ingest contract.
+    pub fn all_embeddings(&self) -> impl Iterator<Item = (u64, &[f32])> {
+        self.embeddings.iter().map(|(id, v)| (*id, v.as_slice()))
+    }
+
     /// Force a flush + compaction.
     pub fn compact(&mut self) -> Result<()> {
         match &mut self.store {
