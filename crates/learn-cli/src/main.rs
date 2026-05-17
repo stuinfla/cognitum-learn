@@ -8,8 +8,8 @@ mod map;
 mod push;
 mod quiz;
 mod setup;
-mod ui;
 pub(crate) mod summary;
+mod ui;
 
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
@@ -588,7 +588,10 @@ fn run_config(action: ConfigAction) -> learn_core::Result<()> {
             cfg.set_key(&key, &value)?;
             cfg.save()?;
             println!("✓ {key} = {value}");
-            println!("  saved to {}", config::LearnConfig::config_path().display());
+            println!(
+                "  saved to {}",
+                config::LearnConfig::config_path().display()
+            );
         }
         ConfigAction::Get { key } => {
             println!("{}", cfg.get_key(&key)?);

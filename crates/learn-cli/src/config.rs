@@ -71,7 +71,11 @@ impl LearnConfig {
     pub fn set_key(&mut self, key: &str, value: &str) -> learn_core::Result<()> {
         match key {
             "seed.address" => {
-                self.seed.address = if value.is_empty() { None } else { Some(value.to_owned()) };
+                self.seed.address = if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_owned())
+                };
             }
             "seed.auto_push" => {
                 self.seed.auto_push = value == "1" || value.eq_ignore_ascii_case("true");
@@ -89,7 +93,9 @@ impl LearnConfig {
     pub fn get_key(&self, key: &str) -> learn_core::Result<String> {
         match key {
             "seed.address" => {
-                let v = self.seed_address().unwrap_or_else(|| "(not set)".to_owned());
+                let v = self
+                    .seed_address()
+                    .unwrap_or_else(|| "(not set)".to_owned());
                 Ok(format!("seed.address = {v}"))
             }
             "seed.auto_push" => Ok(format!("seed.auto_push = {}", self.seed_auto_push())),

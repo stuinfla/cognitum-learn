@@ -8,7 +8,7 @@ const DEFAULT_PORT: u16 = 7878;
 
 pub async fn run_ui(kb_root: Utf8PathBuf, port: Option<u16>) -> Result<()> {
     let port = port.unwrap_or(DEFAULT_PORT);
-    let url  = format!("http://127.0.0.1:{port}");
+    let url = format!("http://127.0.0.1:{port}");
 
     // ── Seed discovery before starting the server ─────────────────────────
     check_and_configure_seed().await;
@@ -22,9 +22,9 @@ pub async fn run_ui(kb_root: Utf8PathBuf, port: Option<u16>) -> Result<()> {
     #[cfg(target_os = "linux")]
     let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
 
-    learn_serve::run_ui_server(kb_root, port).await.map_err(|e| {
-        learn_core::LearnError::Acquire(format!("UI server: {e}"))
-    })?;
+    learn_serve::run_ui_server(kb_root, port)
+        .await
+        .map_err(|e| learn_core::LearnError::Acquire(format!("UI server: {e}")))?;
 
     Ok(())
 }
@@ -74,8 +74,8 @@ async fn check_and_configure_seed() {
 async fn discover_seed_mdns(timeout_secs: u64) -> learn_core::Result<Vec<String>> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
 
-    let daemon = ServiceDaemon::new()
-        .map_err(|e| learn_core::LearnError::Acquire(format!("mDNS: {e}")))?;
+    let daemon =
+        ServiceDaemon::new().map_err(|e| learn_core::LearnError::Acquire(format!("mDNS: {e}")))?;
     let receiver = daemon
         .browse("_cognitum._tcp.local.")
         .map_err(|e| learn_core::LearnError::Acquire(format!("mDNS browse: {e}")))?;
@@ -85,20 +85,19 @@ async fn discover_seed_mdns(timeout_secs: u64) -> learn_core::Result<Vec<String>
 
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if remaining.is_zero() { break; }
-        match receiver.recv_timeout(remaining) {
-            Ok(ServiceEvent::ServiceResolved(info)) => {
-                let addr = info
-                    .get_addresses_v4()
-                    .into_iter()
-                    .next()
-                    .map(|a| a.to_string())
-                    .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_owned());
-                if !found.contains(&addr) {
-                    found.push(addr);
-                }
+        if remaining.is_zero() {
+            break;
+        }
+        if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(remaining) {
+            let addr = info
+                .get_addresses_v4()
+                .into_iter()
+                .next()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_owned());
+            if !found.contains(&addr) {
+                found.push(addr);
             }
-            Ok(_) | Err(_) => {}
         }
     }
     Ok(found)

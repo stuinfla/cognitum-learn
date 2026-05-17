@@ -106,7 +106,13 @@ async fn list_topics(State(state): State<Arc<AppState>>) -> Json<Value> {
                 .unwrap_or_default();
 
             let (video_count, chunks) = read_topic_stats(&state.kb_root, &slug).await;
-            topics.push(TopicEntry { slug, video_count, chunks, size_kb, updated_at });
+            topics.push(TopicEntry {
+                slug,
+                video_count,
+                chunks,
+                size_kb,
+                updated_at,
+            });
         }
     }
 
@@ -175,10 +181,21 @@ async fn ask(
     Json(body): Json<AskBody>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let output = tokio::process::Command::new("learn")
-        .args(["ask", &body.topic, &body.question, "--kb-root", state.kb_root.as_str()])
+        .args([
+            "ask",
+            &body.topic,
+            &body.question,
+            "--kb-root",
+            state.kb_root.as_str(),
+        ])
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     if output.status.success() {
         let text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -198,7 +215,10 @@ async fn ask(
         })))
     } else {
         let err = String::from_utf8_lossy(&output.stderr).to_string();
-        Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": err}))))
+        Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err})),
+        ))
     }
 }
 
@@ -214,9 +234,9 @@ async fn ingest_progress(
     Query(q): Query<IngestQuery>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let (tx, rx) = mpsc::channel::<String>(64);
-    let kb_root  = state.kb_root.to_string();
-    let source   = q.source.clone();
-    let topic    = q.topic.clone();
+    let kb_root = state.kb_root.to_string();
+    let source = q.source.clone();
+    let topic = q.topic.clone();
 
     tokio::spawn(async move {
         let send = |msg: &str, level: &str, pct: u8, done: bool| {
@@ -254,7 +274,10 @@ async fn ingest_progress(
                     "warn"
                 } else if line.contains("Done") || line.contains("indexed") {
                     "success"
-                } else if line.contains("…") || line.contains("Embedding") || line.contains("Captioning") {
+                } else if line.contains("…")
+                    || line.contains("Embedding")
+                    || line.contains("Captioning")
+                {
                     "active"
                 } else {
                     "info"
@@ -270,21 +293,26 @@ async fn ingest_progress(
                 // Stream the Seed push if configured
                 stream_seed_push(&send, &topic, &kb_root).await;
             }
-            Ok(_)  => send("Finished with errors — check `learn doctor`.", "warn", 100, true),
+            Ok(_) => send(
+                "Finished with errors — check `learn doctor`.",
+                "warn",
+                100,
+                true,
+            ),
             Err(e) => send(&format!("Process error: {e}"), "warn", 100, true),
         }
     });
 
     let stream = ReceiverStream::new(rx).map(|data| Ok(Event::default().data(data)));
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("ping"))
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
 
 /// If a Seed is configured, push the topic to it and stream progress events.
-async fn stream_seed_push(
-    send: &impl Fn(&str, &str, u8, bool),
-    topic: &str,
-    kb_root: &str,
-) {
+async fn stream_seed_push(send: &impl Fn(&str, &str, u8, bool), topic: &str, kb_root: &str) {
     let seed_addr: Option<String> = std::env::var("LEARN_SEED_ADDRESS").ok().or_else(|| {
         let path = dirs::config_dir()
             .unwrap_or_default()
@@ -304,13 +332,23 @@ async fn stream_seed_push(
     // Derive the topic slug if not explicitly provided
     let topic_arg = if topic.is_empty() {
         // Without a slug we cannot push — auto_push in the CLI handles this case
-        send(&format!("Stored locally · push with: learn push <topic> --seed {addr}"), "info", 100, true);
+        send(
+            &format!("Stored locally · push with: learn push <topic> --seed {addr}"),
+            "info",
+            100,
+            true,
+        );
         return;
     } else {
         topic.to_string()
     };
 
-    send(&format!("Pushing to Cognitum Seed {addr}…"), "active", 98, false);
+    send(
+        &format!("Pushing to Cognitum Seed {addr}…"),
+        "active",
+        98,
+        false,
+    );
 
     let result = tokio::process::Command::new("learn")
         .args(["push", &topic_arg, "--seed", &addr, "--kb-root", kb_root])
@@ -323,7 +361,15 @@ async fn stream_seed_push(
         }
         Ok(o) => {
             let err = String::from_utf8_lossy(&o.stderr);
-            send(&format!("Push failed: {}", err.lines().next().unwrap_or("unknown error")), "warn", 100, true);
+            send(
+                &format!(
+                    "Push failed: {}",
+                    err.lines().next().unwrap_or("unknown error")
+                ),
+                "warn",
+                100,
+                true,
+            );
         }
         Err(e) => {
             send(&format!("Push error: {e}"), "warn", 100, true);
@@ -338,7 +384,9 @@ struct DiscoverBody {
     #[serde(default = "default_discover_timeout")]
     timeout_secs: u64,
 }
-fn default_discover_timeout() -> u64 { 3 }
+fn default_discover_timeout() -> u64 {
+    3
+}
 
 async fn seed_discover(body: Option<Json<DiscoverBody>>) -> Json<Value> {
     let timeout = body.map(|Json(b)| b.timeout_secs).unwrap_or(3).clamp(1, 10);
@@ -346,25 +394,30 @@ async fn seed_discover(body: Option<Json<DiscoverBody>>) -> Json<Value> {
     let task = tokio::task::spawn_blocking(move || -> Vec<String> {
         use mdns_sd::{ServiceDaemon, ServiceEvent};
 
-        let Ok(daemon) = ServiceDaemon::new() else { return vec![]; };
-        let Ok(receiver) = daemon.browse("_cognitum._tcp.local.") else { return vec![]; };
+        let Ok(daemon) = ServiceDaemon::new() else {
+            return vec![];
+        };
+        let Ok(receiver) = daemon.browse("_cognitum._tcp.local.") else {
+            return vec![];
+        };
 
         let deadline = std::time::Instant::now() + Duration::from_secs(timeout);
         let mut found: Vec<String> = Vec::new();
         loop {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() { break; }
-            match receiver.recv_timeout(remaining) {
-                Ok(ServiceEvent::ServiceResolved(info)) => {
-                    let addr = info
-                        .get_addresses_v4()
-                        .into_iter()
-                        .next()
-                        .map(|a| a.to_string())
-                        .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_owned());
-                    if !found.contains(&addr) { found.push(addr); }
+            if remaining.is_zero() {
+                break;
+            }
+            if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(remaining) {
+                let addr = info
+                    .get_addresses_v4()
+                    .into_iter()
+                    .next()
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_owned());
+                if !found.contains(&addr) {
+                    found.push(addr);
                 }
-                Ok(_) | Err(_) => {}
             }
         }
         found
@@ -390,7 +443,10 @@ async fn seed_configure(
 
     if let Some(dir) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(dir) {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            ));
         }
     }
 
@@ -407,10 +463,18 @@ async fn seed_configure(
     seed["address"] = json!(body.address);
     seed["auto_push"] = json!(body.auto_push);
 
-    let bytes = serde_json::to_vec_pretty(&current)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    std::fs::write(&path, &bytes)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let bytes = serde_json::to_vec_pretty(&current).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+    std::fs::write(&path, &bytes).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({"ok": true, "path": path.to_string_lossy()})))
 }

@@ -56,10 +56,7 @@ pub async fn run_setup(yes_all: bool) -> learn_core::Result<()> {
         "  {}",
         "Your Seed is where all your knowledge lives — permanently,".dimmed()
     );
-    println!(
-        "  {}",
-        "offline, no cloud, no subscription.".dimmed()
-    );
+    println!("  {}", "offline, no cloud, no subscription.".dimmed());
     println!();
 
     let has_seed = if yes_all {
@@ -250,7 +247,10 @@ fn print_step(step: u8, total: u8, title: &str) {
 }
 
 fn print_divider() {
-    println!("  {}", "────────────────────────────────────────────────".dimmed());
+    println!(
+        "  {}",
+        "────────────────────────────────────────────────".dimmed()
+    );
 }
 
 fn print_next_steps(addr: &str, auto_push: bool) {
@@ -275,20 +275,11 @@ fn print_next_steps(addr: &str, auto_push: bool) {
         );
     } else {
         println!();
-        println!(
-            "    {}  learn push knife-sharpening",
-            "▶".bright_cyan()
-        );
+        println!("    {}  learn push knife-sharpening", "▶".bright_cyan());
     }
     println!();
-    println!(
-        "  {}  `learn doctor` — verify setup anytime",
-        "◆".dimmed()
-    );
-    println!(
-        "  {}  `learn` — full command reference",
-        "◆".dimmed()
-    );
+    println!("  {}  `learn doctor` — verify setup anytime", "◆".dimmed());
+    println!("  {}  `learn` — full command reference", "◆".dimmed());
     println!();
 }
 
@@ -305,15 +296,9 @@ fn print_quickstart_only() {
         "    {}  learn ask knife-sharpening \"What angle for a 210mm gyuto?\"",
         "▶".bright_cyan()
     );
-    println!(
-        "    {}  learn quiz knife-sharpening",
-        "▶".bright_cyan()
-    );
+    println!("    {}  learn quiz knife-sharpening", "▶".bright_cyan());
     println!();
-    println!(
-        "  {}  `learn` — full command reference",
-        "◆".dimmed()
-    );
+    println!("  {}  `learn` — full command reference", "◆".dimmed());
     println!(
         "  {}  `learn doctor` — verify your environment",
         "◆".dimmed()

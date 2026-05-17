@@ -14,11 +14,11 @@
 
 #![deny(unsafe_code)]
 
+pub mod http;
 mod protocol;
 mod tools;
 mod witness;
-pub mod http;
 
+pub use http::run as run_ui_server;
 pub use protocol::{run_server, ServerConfig};
 pub use tools::{HitEntry, VideoEntry};
-pub use http::run as run_ui_server;

@@ -356,7 +356,10 @@ pub async fn run_seed_checks() -> Vec<Check> {
     };
 
     let auto_push_check = if cfg.seed_auto_push() {
-        Check::pass("auto-push", "enabled — KB pushed to Seed after every ingest")
+        Check::pass(
+            "auto-push",
+            "enabled — KB pushed to Seed after every ingest",
+        )
     } else {
         Check::warn(
             "auto-push",
