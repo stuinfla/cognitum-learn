@@ -302,12 +302,16 @@ async fn ingest_progress(
                     "Building expert from {n} sources · ~{per_source} videos each ({} total)…",
                     per_source * n
                 ),
-                "info", 2, false,
+                "info",
+                2,
+                false,
             );
         } else {
             send(
                 &format!("Starting ingest pipeline (target: {per_source} videos)…"),
-                "info", 2, false,
+                "info",
+                2,
+                false,
             );
         }
 
@@ -319,13 +323,19 @@ async fn ingest_progress(
             if n > 1 {
                 send(
                     &format!("─ source {}/{n} · {} ─", idx + 1, src),
-                    "info", overall_pct, false,
+                    "info",
+                    overall_pct,
+                    false,
                 );
             }
 
             let mut args = vec![
-                "ingest", src.as_str(), "--kb-root", kb_root.as_str(),
-                "--limit", per_source_str.as_str(),
+                "ingest",
+                src.as_str(),
+                "--kb-root",
+                kb_root.as_str(),
+                "--limit",
+                per_source_str.as_str(),
             ];
             if !topic.is_empty() {
                 args.extend(["--topic", topic.as_str()]);
@@ -339,7 +349,12 @@ async fn ingest_progress(
             {
                 Ok(c) => c,
                 Err(e) => {
-                    send(&format!("Source {}: failed to start — {e}", idx + 1), "warn", overall_pct, false);
+                    send(
+                        &format!("Source {}: failed to start — {e}", idx + 1),
+                        "warn",
+                        overall_pct,
+                        false,
+                    );
                     continue;
                 }
             };
@@ -372,15 +387,24 @@ async fn ingest_progress(
                     if n > 1 {
                         send(
                             &format!("✓ source {}/{n} done.", idx + 1),
-                            "success", overall_pct, false,
+                            "success",
+                            overall_pct,
+                            false,
                         );
                     }
                 }
                 Ok(_) => send(
                     &format!("Source {}: finished with errors — continuing.", idx + 1),
-                    "warn", overall_pct, false,
+                    "warn",
+                    overall_pct,
+                    false,
                 ),
-                Err(e) => send(&format!("Source {}: process error — {e}", idx + 1), "warn", overall_pct, false),
+                Err(e) => send(
+                    &format!("Source {}: process error — {e}", idx + 1),
+                    "warn",
+                    overall_pct,
+                    false,
+                ),
             }
             overall_pct = (start_pct + chunk_pct).min(95);
         }
@@ -391,7 +415,9 @@ async fn ingest_progress(
         } else {
             send(
                 "All sources failed — check `learn doctor`.",
-                "warn", 100, true,
+                "warn",
+                100,
+                true,
             );
         }
     });

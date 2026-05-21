@@ -1,7 +1,7 @@
 //! Model download helpers.
 //!
-//! `ensure_default_model` locates or downloads the BGE-large-en-v1.5 files
-//! into `~/.cache/learn-rs/models/bge-large-en-v15/`.
+//! `ensure_default_model` locates or downloads the BGE-small-en-v1.5 files
+//! into `~/.cache/learn-rs/models/bge-small-en-v15/`.
 //! Files are written to a temp path first, then atomically renamed.
 
 use camino::Utf8PathBuf;
@@ -10,10 +10,10 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use tracing::info;
 
-const HF_BASE: &str = "https://huggingface.co/BAAI/bge-large-en-v1.5/resolve/main";
+const HF_BASE: &str = "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main";
 const MODEL_FILE: &str = "onnx/model.onnx";
 const TOKENIZER_FILE: &str = "tokenizer.json";
-const CACHE_SUBDIR: &str = "learn-rs/models/bge-large-en-v15";
+const CACHE_SUBDIR: &str = "learn-rs/models/bge-small-en-v15";
 
 /// Return the directory containing `model.onnx` and `tokenizer.json`,
 /// downloading them first if absent.

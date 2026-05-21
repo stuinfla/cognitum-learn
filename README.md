@@ -50,8 +50,11 @@ git clone https://github.com/stuinfla/learner-rv.git && cd learner-rv
 git clone https://github.com/ruvnet/RuVector.git ../RuVector
 cargo install --path crates/learn-cli
 
-# 2. Check everything is ready (also auto-fetches the BGE embedder on first use, ~1.3 GB)
+# 2. Check everything is ready (also auto-fetches the BGE embedder on first use, ~130 MB)
 learn doctor
+
+# (or run the guided wizard, which walks you through deps, model, and Seed binding)
+learn setup
 
 # 3. Pick a topic and let Learn-RV find the best videos
 learn study "sous vide cooking techniques"
@@ -166,9 +169,38 @@ learn push knife-sharpening
 
 ---
 
-## Three Ways to Use It
+## Dimensions & the Cognitum Seed
 
-Whether you prefer talking to Claude, typing commands, or wiring it into an AI workflow — it all leads to the same place: your knowledge, cited, on your device.
+**The Seed is not limited to any particular vector dimension.** This is worth stating plainly because it is easy to misread: if you inspect a fresh Seed you may see a store reporting `dimension: 8`, and conclude the device only handles 8-dimensional vectors. That is wrong. The "8" is just the dimension that store happened to be initialized with — typically by the on-device sensor pipeline, which writes small vectors.
+
+How a Cognitum Seed decides its store dimension:
+
+1. **The agent's `--dimension N` launch flag is authoritative.** The Cognitum agent runs with a configured dimension (set in `/etc/systemd/system/cognitum-agent.service.d/override-dimension.conf`). Its proof-verifier rejects any vector whose length ≠ `N`. This is a *configuration value*, not a hardware ceiling.
+2. **A fresh store also locks to the first vector written.** If no flag is set, the dimension is fixed by whatever writes first.
+3. **The store is single-tenant.** One active store holds one dimension. The sensor pipeline and a knowledge base cannot share a store at different dimensions — so for the "build an expert" use case, the store is given over to the KB.
+
+Learn-RV embeds at **384 dimensions** (BGE-small-en-v1.5) by default. To make a Seed accept those vectors:
+
+```bash
+# On the Seed (over SSH), point the agent at 384 and start with a clean store:
+sudo sed -i 's/--dimension [0-9]*/--dimension 384/' \
+  /etc/systemd/system/cognitum-agent.service.d/override-dimension.conf
+sudo systemctl daemon-reload
+sudo systemctl stop cognitum-agent
+sudo rm -f /var/lib/cognitum/rvf-store/*.rvf      # clears the old-dimension store
+sudo systemctl start cognitum-agent
+
+# Then from your computer, push a 384-dim KB:
+learn push my-topic --seed <SEED_IP>              # → store reports "dimension": 384
+```
+
+A push to a Seed whose store is configured for a different dimension fails fast with a clear error (`dimension mismatch: expected N, got 384`) — it never silently corrupts the store. If you want a different embedding dimension, set both the model (`LEARN_EMBED_MODEL_DIR`) and the Seed's `--dimension` flag to match.
+
+---
+
+## Four Ways to Use It
+
+Whether you prefer a point-and-click dashboard, talking to Claude, typing commands, or wiring it into an AI workflow — it all leads to the same place: your knowledge, cited, on your device.
 
 ![Three ways to use Learn-RV](assets/three-modes.svg)
 
@@ -184,8 +216,8 @@ Talk naturally:           learn ingest <url>          learn serve <topic>
 "Watch this video"        learn apply <topic> "t"       · kb_query
 "What did it say?"                                     · kb_synthesize
                           learn status / list           · kb_list_videos
-Claude picks the          learn cloud / map
-right command and         22 subcommands total        Grounded multi-step
+Claude picks the          learn cloud / map / ui
+right command and         26 subcommands total        Grounded multi-step
 runs it for you.                                      workflows — every answer
 No syntax needed.                                     anchored to a video moment.
 ```
@@ -241,9 +273,17 @@ learn push french-cooking
 
 Claude Code gains three tools: `kb_query`, `kb_synthesize`, `kb_list_videos`. Now you can say _"using my french-cooking topic, walk me through making croissants — write the schedule to disk, adjust if I tell you my kitchen is 68°F"_ and Claude calls the KB at each step, grounding every instruction in a specific video moment.
 
+### 🖥️ As a web dashboard (point-and-click, no terminal)
+
+```bash
+learn ui          # starts a local server at http://127.0.0.1:7878 and opens your browser
+```
+
+A self-contained React dashboard served by the built-in Axum bridge — everything stays on your machine. It includes a guided onboarding wizard (discover your Seed → pick a topic → watch the ingest progress live → chat with your new expert), so a brand-new Cognitum Seed owner can go from zero to a working expert without touching the command line.
+
 ---
 
-<details><summary>📦 All 22 commands</summary>
+<details><summary>📦 All 26 commands</summary>
 
 ### Discovery + ingestion
 
@@ -304,11 +344,21 @@ learn summarize french-cooking                       # key takeaways across the 
 ```bash
 learn push    french-cooking   # push KB to Cognitum One Seed on local network
 learn serve   french-cooking   # start MCP server for Claude Code integration
+learn ui                       # local web dashboard (onboarding wizard + chat) in your browser
 learn watch   french-cooking   # monitor a channel for new videos, auto-ingest
 learn eval    french-cooking   # run golden Q&A regression against the KB
 learn forget  french-cooking <video_id>    # remove one video from the KB
-learn compact french-cooking               # defragment the RVF file
+learn compact french-cooking               # dedupe + optimize the RVF HNSW index
 learn doctor                               # check deps, models, env, release version
+```
+
+### Setup + configuration
+
+```bash
+learn setup                                # guided first-run wizard (deps, model, Seed binding)
+learn config set seed.address 192.168.1.42 # persist your Seed's address
+learn config set seed.auto_push true       # auto-push after every ingest
+learn config get seed                      # read current configuration
 ```
 
 </details>
@@ -335,7 +385,7 @@ Source URL / path
       ↓
   CHUNK — sentence-aware, ~300 tokens, 50-token overlap
       ↓
-  EMBED — BGE-large-en-v1.5 (1024-dim, ONNX, on-device)
+  EMBED — BGE-small-en-v1.5 (384-dim, ONNX, on-device)
       ↓
   INDEX — RvfStore append-only HNSW + Ed25519 witness chain per chunk
       ↓
@@ -377,7 +427,7 @@ User question
 
 | Layer | Crate | Responsibility |
 |---|---|---|
-| CLI | `learn-cli` | 22 subcommands, routing, orientation |
+| CLI | `learn-cli` | 26 subcommands, routing, orientation |
 | Ingestion | `learn-acquire`, `learn-asr`, `learn-frames`, `learn-chunk`, `learn-embed`, `learn-index`, `learn-graph` | Full pipeline from URL to `.rvf` |
 | Retrieval | `learn-retrieve` | Hybrid BM25+dense, rerank, MMR |
 | Synthesis | `learn-synth` | Cited answers, in-tree AIMDS scanner |
@@ -413,7 +463,7 @@ Per-topic isolation is total. Drop a topic by deleting one file. Move the whole 
 
 ![Learning flywheel](assets/diagrams/learning-flywheel.svg)
 
-- **BGE-large-en-v1.5 (1024-dim)** — best-in-class English sentence embedder, on-device ONNX
+- **BGE-small-en-v1.5 (384-dim)** — compact, fast, on-device ONNX embedder; 384 dims is the default so a knowledge base is small and quick to store on a Cognitum Seed (≈37% the size of a 1024-dim store). Override with `LEARN_EMBED_MODEL_DIR` if you want a different model.
 - **HNSW via RvfStore** — logarithmic search, native to the file format
 - **SONA per-topic adapters** — LoRA fine-tuning per topic; the embedder specializes with use
 - **In-tree AIMDS** — 12 inbound + 8 outbound regex patterns; scans every query and every answer
@@ -453,7 +503,7 @@ brew install yt-dlp ffmpeg   # macOS
 # apt install yt-dlp ffmpeg  # Debian/Ubuntu
 ```
 
-Whisper and BGE-large models auto-fetch into `~/.cache/learn-rs/models/` on first use (`learn doctor` shows status).
+Whisper and the BGE-small embedder auto-fetch into `~/.cache/learn-rs/models/` on first use (`learn doctor` shows status).
 
 **Environment setup:**
 
@@ -485,9 +535,9 @@ cp .env.example .env
 
 | Platform | Binary? | Notes |
 |---|---|---|
-| M-series Mac (`aarch64-apple-darwin`) | ✅ v0.2.5 | Primary, fully supported |
-| Linux x86_64 (`x86_64-unknown-linux-gnu`) | ✅ v0.2.5 | Captions-only (no local Whisper on Linux) |
-| Windows (`x86_64-pc-windows-msvc`) | ✅ v0.2.6 | No on-device ASR (whisper-rs is Apple-only) |
+| M-series Mac (`aarch64-apple-darwin`) | ✅ v0.2.9+ | Primary, fully supported |
+| Linux x86_64 (`x86_64-unknown-linux-gnu`) | ✅ v0.2.9+ | Captions-only (no local Whisper on Linux) |
+| Windows (`x86_64-pc-windows-msvc`) | ✅ v0.2.9+ | No on-device ASR (whisper-rs is Apple-only) |
 | Intel Mac (`x86_64-apple-darwin`) | Build from source | macOS-13 runner deprecated by GitHub |
 | Linux ARM64 | Build from source | cross-Docker can't reach RuVector path-deps |
 
@@ -495,7 +545,7 @@ cp .env.example .env
 
 <details><summary>⚠️ Honest caveats</summary>
 
-Current state: v0.2.5 (2026-05-05)
+Current state: v0.2.17 (2026-05-21)
 
 - **Linux ARM64 + Intel Mac binaries are not published.** Build from source. Reasons: `cross` Docker cannot reach the `../ruvector` sibling path-dep; macOS-13 runner deprecated.
 - **Coherence KPI** uses Fiedler eigenvalue × NN-cosine density — a useful relative health signal, not a research-grade IIT Φ.
@@ -503,6 +553,8 @@ Current state: v0.2.5 (2026-05-05)
 - **SONA self-learning** works but the feedback signal that updates the LoRA adapter requires explicit `record_feedback` API calls — not yet wired into a passive thumbs-up/down on `learn ask`.
 - **Smart frame decision** runs pHash variance; low-variance (talking-head) videos skip frame extraction automatically to save API budget.
 - **Windows** builds and runs but omits on-device speech recognition (`learn-asr` is Apple-only due to whisper-rs metal feature).
+- **Embedder dimension changed to 384 (BGE-small) in v0.2.17.** Knowledge bases built by earlier versions are 1024-dim (BGE-large) and will not match new 384-dim query vectors. Re-ingest a topic (`learn ingest …` / `learn study …`) to rebuild it at 384. `learn compact` does **not** re-embed — it only dedupes and optimizes the existing HNSW index.
+- **A Cognitum Seed enforces one dimension per store**, set by its agent's `--dimension` flag and the first vector written. Point it at 384 to match the new default (see [Dimensions & the Cognitum Seed](#dimensions--the-cognitum-seed)). The Seed is **not** limited to any particular dimension — it stores whatever its store is configured for.
 
 </details>
 
@@ -521,7 +573,7 @@ CI requires all four green before merge. 311+ unit + integration tests.
 
 <details><summary>📜 License + contributing</summary>
 
-Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal, research, and other noncommercial use. For a commercial license, contact the author.
 
 Contributions welcome. Open an issue before sending a PR larger than ~50 lines so we can align on approach. CI gate must be green.
 
@@ -529,4 +581,4 @@ Contributions welcome. Open an issue before sending a PR larger than ~50 lines s
 
 ---
 
-*Built with [RuVector](https://github.com/ruvnet/ruvector) · MIT/Apache-2.0 · [Releases](https://github.com/stuinfla/learner-rv/releases)*
+*Built with [RuVector](https://github.com/ruvnet/ruvector) · PolyForm Noncommercial 1.0.0 · [Releases](https://github.com/stuinfla/learner-rv/releases)*

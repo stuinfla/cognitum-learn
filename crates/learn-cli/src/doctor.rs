@@ -426,7 +426,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         .unwrap_or_else(|| PathBuf::from(".cache"))
         .join("learn-rs")
         .join("models")
-        .join("bge-large-en-v15");
+        .join("bge-small-en-v15");
     let skill_file = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")

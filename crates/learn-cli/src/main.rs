@@ -159,7 +159,7 @@ enum Cmd {
         #[arg(long)]
         video: Option<String>,
     },
-    /// Re-embed, dedupe, optimize HNSW.
+    /// Dedupe and optimize the HNSW index (does not re-embed; re-ingest to change model/dimension).
     Compact { topic: String },
     /// First-60-seconds environment diagnostic: check deps, storage, network,
     /// version, and config.  Exit 0 when all required checks pass.
@@ -633,7 +633,7 @@ fn resolve_kb_root(flag: Option<Utf8PathBuf>) -> Utf8PathBuf {
         .unwrap_or_else(|_| Utf8PathBuf::from("./Docs/KB"))
 }
 
-/// Default BGE-large model directory.
+/// Default BGE-small model directory.
 pub(crate) fn default_model_dir() -> Utf8PathBuf {
     if let Ok(env) = std::env::var("LEARN_EMBED_MODEL_DIR") {
         if !env.is_empty() {
@@ -645,12 +645,12 @@ pub(crate) fn default_model_dir() -> Utf8PathBuf {
         cache
             .join("learn-rs")
             .join("models")
-            .join("bge-large-en-v15"),
+            .join("bge-small-en-v15"),
     )
-    .unwrap_or_else(|_| Utf8PathBuf::from(".cache/learn-rs/models/bge-large-en-v15"))
+    .unwrap_or_else(|_| Utf8PathBuf::from(".cache/learn-rs/models/bge-small-en-v15"))
 }
 
-/// Resolve the embedder model directory, downloading the BGE-large weights on
+/// Resolve the embedder model directory, downloading the BGE-small weights on
 /// first use. Honors `LEARN_EMBED_MODEL_DIR` (no download). Otherwise calls
 /// `learn_embed::ensure_default_model()`, which is a no-op when the cache is
 /// already populated and prints a one-time progress message when it isn't.
@@ -666,7 +666,7 @@ pub(crate) fn ensure_model_ready() -> learn_core::Result<Utf8PathBuf> {
     let already_present = dir.join("model.onnx").exists() && dir.join("tokenizer.json").exists();
     if !already_present {
         eprintln!(
-            "📦 Downloading BGE-large-en-v1.5 (≈1.3 GB, one-time setup)…\n   \
+            "📦 Downloading BGE-small-en-v1.5 (≈130 MB, one-time setup)…\n   \
              Cached at {dir}"
         );
     }
@@ -714,7 +714,7 @@ fn print_error(err: &learn_core::LearnError) {
         Acquire(msg) => eprintln!("error: failed to acquire source: {msg}"),
         Embed(msg) => eprintln!(
             "error: embedder unavailable. Place model.onnx + tokenizer.json at \
-             ~/.cache/learn-rs/models/bge-large-en-v15/ or set $LEARN_EMBED_MODEL_DIR.\n\
+             ~/.cache/learn-rs/models/bge-small-en-v15/ or set $LEARN_EMBED_MODEL_DIR.\n\
              details: {msg}"
         ),
         Synth(msg) => eprintln!(

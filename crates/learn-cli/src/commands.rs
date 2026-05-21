@@ -1234,7 +1234,7 @@ pub fn run_forget(topic_str: String, video: Option<String>, kb_root: Utf8PathBuf
 
 // ── Compact ──────────────────────────────────────────────────────────────────
 
-/// Re-embed, dedupe, optimize HNSW for a topic.
+/// Dedupe and optimize the HNSW index for a topic (does not re-embed).
 pub fn run_compact(topic_str: String, kb_root: Utf8PathBuf) -> Result<()> {
     let topic = Topic::new(&topic_str)?;
     let mut index = LearnIndex::open(kb_root.as_ref(), topic.clone())?;

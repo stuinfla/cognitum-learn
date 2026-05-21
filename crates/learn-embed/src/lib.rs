@@ -1,10 +1,10 @@
 //! `learn-embed` — ONNX-backed dense embedder with SONA self-learning layer.
 //!
-//! Phase 1: BGE-large-en-v1.5 (1024-dim) via `ort` (ONNX Runtime).
+//! Phase 1: BGE-small-en-v1.5 (384-dim) via `ort` (ONNX Runtime).
 //! Phase 2: `Reranker` stub targeting `BAAI/bge-reranker-base`.
 //!
 //! Embedding pipeline:
-//!   text → tokenizer → ONNX session (BGE-large) → CLS vector
+//!   text → tokenizer → ONNX session (BGE-small) → CLS vector
 //!     → SONA MicroLoRA delta (if adapter present) → L2-normalize → return
 //!
 //! Feedback is persisted under `~/.cache/learn-rs/feedback/<topic>.jsonl`.
@@ -27,7 +27,7 @@
 //! explicit `engine.flush()` call inside `record_feedback` before serialization.
 //!
 //! Safety: if the persisted file's `hidden_dim` differs from
-//! `BGE_LARGE_EN_V15_DIM` (e.g. stale file from a different model), the file
+//! `EMBED_DIM` (e.g. stale file from a different model), the file
 //! is silently ignored and a fresh engine is used instead.
 //!
 //! CoreML is used automatically on Apple Silicon when the `coreml` ort
@@ -55,8 +55,8 @@ use tracing::debug;
 // Public constants
 // ---------------------------------------------------------------------------
 
-pub const BGE_LARGE_EN_V15_DIM: usize = 1024;
-pub const DEFAULT_EMBED_MODEL: &str = "BAAI/bge-large-en-v1.5";
+pub const EMBED_DIM: usize = 384;
+pub const DEFAULT_EMBED_MODEL: &str = "BAAI/bge-small-en-v1.5";
 
 // ---------------------------------------------------------------------------
 // EmbedConfig
@@ -204,9 +204,9 @@ impl Embedder {
     // Public API (preserved signatures from Phase 2 contract)
     // -----------------------------------------------------------------------
 
-    /// Output dimension of the model (always `BGE_LARGE_EN_V15_DIM`).
+    /// Output dimension of the model (always `EMBED_DIM`).
     pub fn dimension(&self) -> usize {
-        BGE_LARGE_EN_V15_DIM
+        EMBED_DIM
     }
 
     /// Embed a single string and return the CLS vector.
@@ -274,15 +274,15 @@ impl Embedder {
         // not available (hermetic tests), we fall back to a zero vector.
         let query_vec = match self.embed_query_for_sona(query) {
             Ok(v) => v,
-            Err(_) => vec![0.0f32; BGE_LARGE_EN_V15_DIM],
+            Err(_) => vec![0.0f32; EMBED_DIM],
         };
 
         let mut builder = self.sona.begin_trajectory(query_vec);
         // Single step: activations carry the quality signal; empty attention weights.
         builder.add_step(
-            vec![quality; BGE_LARGE_EN_V15_DIM], // activations
-            vec![],                              // attention_weights
-            quality,                             // reward
+            vec![quality; EMBED_DIM], // activations
+            vec![],                   // attention_weights
+            quality,                  // reward
         );
         self.sona.end_trajectory(builder, quality);
 
@@ -347,7 +347,7 @@ impl Embedder {
 /// Construct a `SonaEngine` for `topic_slug`, loading persisted `MicroLoRA`
 /// weights when available.
 ///
-/// If `lora.json` exists and its `hidden_dim` matches `BGE_LARGE_EN_V15_DIM`,
+/// If `lora.json` exists and its `hidden_dim` matches `EMBED_DIM`,
 /// the saved weight matrices are injected into the engine's `micro_lora` lock
 /// so inference immediately reflects prior learning. Any dimension mismatch
 /// (e.g. stale file) is silently ignored — a fresh engine is used instead.
@@ -357,7 +357,7 @@ fn sona_for_topic(topic_slug: &str) -> SonaEngine {
     let weights_path = adapter_dir_for_topic(topic_slug).join("lora.json");
     if weights_path.exists() {
         match load_lora_weights(&weights_path) {
-            Ok(lora) if lora.hidden_dim() == BGE_LARGE_EN_V15_DIM => {
+            Ok(lora) if lora.hidden_dim() == EMBED_DIM => {
                 if let Some(mut guard) = engine.coordinator().micro_lora().try_write() {
                     *guard = lora;
                     tracing::info!(path = %weights_path.display(), "loaded SONA MicroLoRA weights");
@@ -367,7 +367,7 @@ fn sona_for_topic(topic_slug: &str) -> SonaEngine {
                 tracing::warn!(
                     path = %weights_path.display(),
                     saved_dim = lora.hidden_dim(),
-                    expected_dim = BGE_LARGE_EN_V15_DIM,
+                    expected_dim = EMBED_DIM,
                     "discarding stale adapter: hidden_dim mismatch"
                 );
             }
@@ -420,13 +420,13 @@ fn save_lora_weights(topic_slug: &str, micro_lora: &parking_lot::RwLock<MicroLoR
 }
 
 // ---------------------------------------------------------------------------
-// SONA configuration for BGE-large (1024-dim)
+// SONA configuration for BGE-small (384-dim)
 // ---------------------------------------------------------------------------
 
 fn sona_config_for_bge() -> SonaConfig {
     SonaConfig {
-        hidden_dim: BGE_LARGE_EN_V15_DIM,
-        embedding_dim: BGE_LARGE_EN_V15_DIM,
+        hidden_dim: EMBED_DIM,
+        embedding_dim: EMBED_DIM,
         ..SonaConfig::default()
     }
 }
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn dim_constant() {
-        assert_eq!(BGE_LARGE_EN_V15_DIM, 1024);
+        assert_eq!(EMBED_DIM, 384);
     }
 
     #[test]
@@ -793,9 +793,9 @@ mod tests {
             ..Default::default()
         };
         let mut emb = Embedder::load(&cfg).unwrap();
-        assert_eq!(emb.dimension(), BGE_LARGE_EN_V15_DIM);
+        assert_eq!(emb.dimension(), EMBED_DIM);
         let v = emb.embed_text("hello world").unwrap();
-        assert_eq!(v.len(), BGE_LARGE_EN_V15_DIM);
+        assert_eq!(v.len(), EMBED_DIM);
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 1e-4, "not unit norm: {norm}");
     }
@@ -852,16 +852,14 @@ mod tests {
     fn sona_delta_passthrough_for_zero_engine() {
         use ruvector_sona::{SonaConfig, SonaEngine};
 
-        // Build a fresh (zeroed) SonaEngine matching BGE-large dimensions.
+        // Build a fresh (zeroed) SonaEngine matching BGE-small dimensions.
         let cfg = SonaConfig {
-            hidden_dim: BGE_LARGE_EN_V15_DIM,
-            embedding_dim: BGE_LARGE_EN_V15_DIM,
+            hidden_dim: EMBED_DIM,
+            embedding_dim: EMBED_DIM,
             ..SonaConfig::default()
         };
         let engine = SonaEngine::with_config(cfg);
-        let input: Vec<f32> = (0..BGE_LARGE_EN_V15_DIM)
-            .map(|i| (i as f32) * 0.001)
-            .collect();
+        let input: Vec<f32> = (0..EMBED_DIM).map(|i| (i as f32) * 0.001).collect();
 
         // Call through apply_sona_delta_via_engine, which mirrors the
         // production method exactly and calls the same SonaEngine path.
@@ -895,9 +893,7 @@ mod tests {
             ..Default::default()
         };
         let embedder = Embedder::load(&cfg).unwrap();
-        let input: Vec<f32> = (0..BGE_LARGE_EN_V15_DIM)
-            .map(|i| (i as f32) * 0.001)
-            .collect();
+        let input: Vec<f32> = (0..EMBED_DIM).map(|i| (i as f32) * 0.001).collect();
 
         // Calls the actual method — any divergence from the inline replica above
         // would surface here.
@@ -956,8 +952,8 @@ mod tests {
         // We must use at least two steps with DIFFERENT rewards so that
         // advantage != 0 for at least one step.
         let sona_cfg = SonaConfig {
-            hidden_dim: BGE_LARGE_EN_V15_DIM,
-            embedding_dim: BGE_LARGE_EN_V15_DIM,
+            hidden_dim: EMBED_DIM,
+            embedding_dim: EMBED_DIM,
             ..SonaConfig::default()
         };
         let engine_a = SonaEngine::with_config(sona_cfg.clone());
@@ -969,24 +965,24 @@ mod tests {
             //   advantage_step0 = +0.4, advantage_step1 = -0.4
             //   gradient = 0.4 * activations_0 + (-0.4) * activations_1 != 0
             let _ = i; // suppress unused warning
-            let mut builder = engine_a.begin_trajectory(vec![0.1_f32; BGE_LARGE_EN_V15_DIM]);
-            builder.add_step(vec![0.9_f32; BGE_LARGE_EN_V15_DIM], vec![], 0.9_f32);
-            builder.add_step(vec![0.1_f32; BGE_LARGE_EN_V15_DIM], vec![], 0.1_f32);
+            let mut builder = engine_a.begin_trajectory(vec![0.1_f32; EMBED_DIM]);
+            builder.add_step(vec![0.9_f32; EMBED_DIM], vec![], 0.9_f32);
+            builder.add_step(vec![0.1_f32; EMBED_DIM], vec![], 0.1_f32);
             engine_a.end_trajectory(builder, 0.9_f32);
         }
         // Mirrors record_feedback: flush before save so gradients are committed.
         engine_a.flush();
 
         // Capture expected output before save.
-        let probe = vec![1.0_f32; BGE_LARGE_EN_V15_DIM];
-        let mut expected_out = vec![0.0_f32; BGE_LARGE_EN_V15_DIM];
+        let probe = vec![1.0_f32; EMBED_DIM];
+        let mut expected_out = vec![0.0_f32; EMBED_DIM];
         engine_a.apply_micro_lora(&probe, &mut expected_out);
 
         // Guard: weights must be non-zero after 50 trajectories.
         //
-        // Threshold is 1e-9 (not 1e-6) because at 1024 dimensions the per-element
+        // Threshold is 1e-9 (not 1e-6) because at 384 dimensions the per-element
         // MicroLoRA update magnitude is approximately lr * (gradient_norm / dim) ≈
-        // 0.001 * (1/1024) ≈ 1e-6, and after scaling through the forward pass
+        // 0.001 * (1/384) ≈ 2.6e-6, and after scaling through the forward pass
         // (rank-1, scale = 1/sqrt(rank) = 1) the CLS delta per element is in the
         // ~1e-7 range.  1e-9 is strict enough to catch a completely silent flush()
         // while being well below the natural update magnitude.
@@ -1021,8 +1017,8 @@ mod tests {
         // Verify dimension guard matches what sona_for_topic checks.
         assert_eq!(
             lora.hidden_dim(),
-            BGE_LARGE_EN_V15_DIM,
-            "restored hidden_dim must match BGE_LARGE_EN_V15_DIM"
+            EMBED_DIM,
+            "restored hidden_dim must match EMBED_DIM"
         );
 
         // Inject into a fresh engine (mirrors sona_for_topic).
@@ -1032,7 +1028,7 @@ mod tests {
             *guard = lora;
         }
 
-        let mut restored_out = vec![0.0_f32; BGE_LARGE_EN_V15_DIM];
+        let mut restored_out = vec![0.0_f32; EMBED_DIM];
         engine_b.apply_micro_lora(&probe, &mut restored_out);
 
         let max_diff = expected_out
@@ -1091,7 +1087,7 @@ mod tests {
 
         // --- Phase 2: restore via for_topic and verify apply_sona_delta changes ---
         let embedder2 = Embedder::for_topic(&test_topic, &cfg).unwrap();
-        let probe = vec![1.0_f32; BGE_LARGE_EN_V15_DIM];
+        let probe = vec![1.0_f32; EMBED_DIM];
         let result = embedder2.apply_sona_delta(probe.clone());
 
         // Guard: after 3 feedback events the adapter should have non-zero weights.

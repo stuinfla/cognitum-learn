@@ -201,9 +201,9 @@ fn default_model_dir() -> Utf8PathBuf {
         cache
             .join("learn-rs")
             .join("models")
-            .join("bge-large-en-v15"),
+            .join("bge-small-en-v15"),
     )
-    .unwrap_or_else(|_| Utf8PathBuf::from(".cache/learn-rs/models/bge-large-en-v15"))
+    .unwrap_or_else(|_| Utf8PathBuf::from(".cache/learn-rs/models/bge-small-en-v15"))
 }
 
 fn witness_path_for(kb_root: &Utf8PathBuf, topic: &str) -> PathBuf {
