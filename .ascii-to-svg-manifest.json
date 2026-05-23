@@ -6,7 +6,7 @@
       "id": "pipeline",
       "sourceFile": "README.md",
       "svgFile": "assets/pipeline.svg",
-      "description": "Learn-RV ingest pipeline (8-stage vertical flow)",
+      "description": "Cognitum Learn ingest pipeline (8-stage vertical flow)",
       "lastConverted": "2026-05-05T13:32:00Z"
     },
     {
@@ -20,7 +20,7 @@
       "id": "three-modes",
       "sourceFile": "README.md",
       "svgFile": "assets/three-modes.svg",
-      "description": "Three ways to use Learn-RV (Claude Skill / CLI / MCP Server)",
+      "description": "Three ways to use Cognitum Learn (Claude Skill / CLI / MCP Server)",
       "lastConverted": "2026-05-05T13:32:00Z"
     }
   ]

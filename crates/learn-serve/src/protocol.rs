@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use crate::tools::{handle_kb_list_videos, handle_kb_query, handle_kb_synthesize};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
-const SERVER_NAME: &str = "learn-rv";
+const SERVER_NAME: &str = "cognitum-learn";
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Configuration passed to [`run_server`].

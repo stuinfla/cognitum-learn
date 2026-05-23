@@ -108,7 +108,7 @@ pub fn run_cloud_meta(
     let total_chunks: usize = entries.iter().map(|e| e.chunk_count).sum();
     let kb_bytes = kb_size_bytes(kb_root);
     let title = format!(
-        "Learn-RV Knowledge Base \u{2014} {} topic{}, {} total chunks, {:.1} MB",
+        "Cognitum Learn Knowledge Base \u{2014} {} topic{}, {} total chunks, {:.1} MB",
         entries.len(),
         if entries.len() == 1 { "" } else { "s" },
         total_chunks,

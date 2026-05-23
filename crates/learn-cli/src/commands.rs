@@ -952,7 +952,7 @@ fn print_macos_launchagent(task_id: &str, cron_expr: &str, cmd: &str, topic: &To
 
     let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let plist_path = format!(
-        "{}/Library/LaunchAgents/com.learn-rv.{}.plist",
+        "{}/Library/LaunchAgents/com.cognitum-learn.{}.plist",
         home,
         topic.as_str()
     );
@@ -1051,7 +1051,7 @@ fn generate_plist(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.learn-rv.{}</string>
+    <string>com.cognitum-learn.{}</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>

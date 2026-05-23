@@ -1,4 +1,4 @@
-# DDD-001 — Learn-RV Bounded Contexts
+# DDD-001 — Cognitum Learn Bounded Contexts
 
 **Status:** Living document
 **Date:** 2026-05-02
@@ -6,7 +6,7 @@
 
 ## Why this exists
 
-The Learn-RV codebase is twelve crates wide and growing. As capabilities land, the risk of cross-context coupling grows with it. This document maps the eight bounded contexts, names the aggregates inside each, and pins the ubiquitous language so future contributors (human or agent) speak the same words for the same things.
+The Cognitum Learn codebase is twelve crates wide and growing. As capabilities land, the risk of cross-context coupling grows with it. This document maps the eight bounded contexts, names the aggregates inside each, and pins the ubiquitous language so future contributors (human or agent) speak the same words for the same things.
 
 ## Ubiquitous language
 

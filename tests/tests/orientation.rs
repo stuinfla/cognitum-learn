@@ -44,7 +44,7 @@ fn no_args_prints_orientation_and_exits_zero() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Learn-RV"),
+        stdout.contains("Cognitum Learn"),
         "orientation header missing from stdout:\n{stdout}"
     );
     assert!(

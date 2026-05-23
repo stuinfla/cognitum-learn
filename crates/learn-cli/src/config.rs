@@ -1,4 +1,4 @@
-//! Persistent configuration for learn-rv.
+//! Persistent configuration for cognitum-learn.
 //!
 //! Stored as JSON at `~/.config/learn-rs/config.json`.
 //! `LEARN_SEED_ADDRESS` and `LEARN_SEED_AUTO_PUSH` env vars override file values.

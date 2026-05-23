@@ -630,7 +630,7 @@ fn render_map_svg(
     ));
 
     // Title.
-    let title = format!("Learn-RV Knowledge Map — {date_str}");
+    let title = format!("Cognitum Learn Knowledge Map — {date_str}");
     svg.push_str(&format!(
         "<text x=\"20\" y=\"36\" font-family=\"monospace,sans-serif\" font-size=\"20\" \
          fill=\"#e8eaf6\" font-weight=\"bold\">{}</text>",

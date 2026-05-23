@@ -1,5 +1,5 @@
 #![deny(unsafe_code)]
-//! KB health and query-drift monitoring for Learn-RV.
+//! KB health and query-drift monitoring for Cognitum Learn.
 //!
 //! Wraps `ruvector-coherence` spectral primitives to answer two questions:
 //! 1. Is this KB's embedding set internally consistent? (`check_kb_health`)

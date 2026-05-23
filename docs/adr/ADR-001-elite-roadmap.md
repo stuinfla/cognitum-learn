@@ -1,4 +1,4 @@
-# ADR-001 — Learn-RV Elite Roadmap
+# ADR-001 — Cognitum Learn Elite Roadmap
 
 **Status:** accepted (phases 0–2E) | proposed (phases 2.5, 3, 4, 5)
 **Date Started:** 2026-05-02
@@ -7,7 +7,7 @@
 
 ## Context
 
-Learn-RV is a pure-Rust knowledge-base ingestion CLI. Source video → captions → semantic chunks → BGE-large embeddings → per-topic `.rvf` file → cited answers. The substrate is RuVector (RVF format, HNSW, witness chain) — Stuart's own technology stack, not a third-party dependency. The goal is an *elite-tier* system that learns over time (SONA), self-checks for drift (CoherenceMonitor), surfaces sub-topics autonomously (Louvain communities), scales to billion-vector recall (DiskANN), and answers entirely on-device when sovereignty is required (ruvllm).
+Cognitum Learn is a pure-Rust knowledge-base ingestion CLI. Source video → captions → semantic chunks → BGE-large embeddings → per-topic `.rvf` file → cited answers. The substrate is RuVector (RVF format, HNSW, witness chain) — Stuart's own technology stack, not a third-party dependency. The goal is an *elite-tier* system that learns over time (SONA), self-checks for drift (CoherenceMonitor), surfaces sub-topics autonomously (Louvain communities), scales to billion-vector recall (DiskANN), and answers entirely on-device when sovereignty is required (ruvllm).
 
 This ADR records every phase of the build so progress survives any context loss, mid-session crash, or hand-off.
 

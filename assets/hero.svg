@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 260" width="860" height="260" role="img" aria-label="Learn-RV concept: videos and content on the internet become an instant expert on your Cognitum Seed">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 260" width="860" height="260" role="img" aria-label="Cognitum Learn concept: videos and content on the internet become an instant expert on your Cognitum Seed">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#f0f9ff"/>
@@ -45,13 +45,13 @@
   <text x="210" y="123" fill="#374151" font-family="system-ui,sans-serif" font-size="10" font-weight="600" text-anchor="middle">Your Own Files</text>
   <text x="210" y="137" fill="#9ca3af" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">PDFs, notes, docs</text>
 
-  <!-- ── CENTER ARROW + LEARN-RV pill ──────────────────────────────────── -->
+  <!-- ── CENTER ARROW + COGNITUM-LEARN pill ──────────────────────────────────── -->
   <!-- Arrow left side -->
   <line x1="278" y1="130" x2="318" y2="130" stroke="#d1d5db" stroke-width="2" stroke-dasharray="4,3"/>
 
-  <!-- Learn-RV pill -->
+  <!-- Cognitum Learn pill -->
   <rect x="320" y="104" width="220" height="52" rx="26" fill="url(#pill)"/>
-  <text x="430" y="126" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle">Learn-RV</text>
+  <text x="430" y="126" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle">Cognitum Learn</text>
   <text x="430" y="145" fill="#e0e7ff" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">finds · downloads · indexes · stores</text>
 
   <!-- Tagline below pill -->

@@ -1,9 +1,9 @@
 ---
-name: learn-rv
+name: cognitum-learn
 description: Build per-topic knowledge bases from YouTube videos and query them with cited Anthropic answers. Pure-Rust pipeline (BGE-large embeddings, hybrid HNSW + BM25 retrieval, MMR diversity, witness-chained RVF storage, SONA per-topic self-learning, AIMDS guardrails). Invoke when the user wants to ingest video content, query a video knowledge base, or run autonomous curriculum discovery.
 ---
 
-# Learn-RV — Video Knowledge Base CLI
+# Cognitum Learn — Video Knowledge Base CLI
 
 A high-performance Rust CLI that turns YouTube videos into queryable knowledge bases stored in RuVector's RVF binary format. Each KB is one `.rvf` file per topic.
 
@@ -24,8 +24,8 @@ Binary name: `learn`.
 
 Lookup order:
 1. `which learn` — already on PATH (normal after `cargo install` or the release `install.sh`)
-2. `~/.claude/skills/learn-rv/bin/learn` — symlinked by `install.sh` from a release tarball
-3. Neither found → install from the public release: https://github.com/stuinfla/learner-rv/releases
+2. `~/.claude/skills/cognitum-learn/bin/learn` — symlinked by `install.sh` from a release tarball
+3. Neither found → install from the public release: https://github.com/stuinfla/cognitum-learn/releases
 
 Run `learn --help` to confirm install before first use.
 
@@ -98,7 +98,7 @@ Use `--limit N` with channels/playlists/search to bound ingest. `--since YYYY-MM
 
 ## Repo + project state
 
-- Public repo: https://github.com/stuinfla/learner-rv
+- Public repo: https://github.com/stuinfla/cognitum-learn
 - Workspace at: `/Users/stuartkerr/Code/Video watcher skill/learn-rs/`
 - Path-deps to: `~/RuVector_Clean` via sibling symlink `../ruvector`
 - Phase tracking: `docs/adr/ADR-001-elite-roadmap.md`

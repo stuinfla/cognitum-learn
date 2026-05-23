@@ -394,7 +394,7 @@ pub async fn run_seed_checks() -> Vec<Check> {
 pub async fn run_doctor(kb_root: &Path) -> bool {
     println!(
         "{}",
-        format!("Learn-RV — Doctor (v{})", env!("CARGO_PKG_VERSION")).bold()
+        format!("Cognitum Learn — Doctor (v{})", env!("CARGO_PKG_VERSION")).bold()
     );
 
     // -- DEPENDENCIES --
@@ -431,7 +431,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")
         .join("skills")
-        .join("learn-rv")
+        .join("cognitum-learn")
         .join("SKILL.md");
 
     let checks_storage: Vec<Check> = vec![
@@ -453,7 +453,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         check_file(
             "Skill folder",
             &skill_file,
-            "run `learn install-skill` or check ~/.claude/skills/learn-rv/",
+            "run `learn install-skill` or check ~/.claude/skills/cognitum-learn/",
             |p| p.exists(),
         ),
         check_optional_dir(
@@ -486,7 +486,7 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
     print_section("VERSION");
 
     let binary_version = env!("CARGO_PKG_VERSION");
-    let repo = "https://github.com/stuinfla/learner-rv";
+    let repo = "https://github.com/stuinfla/cognitum-learn";
     let github_tag = fetch_github_latest(repo).await;
     let ver_check = check_version(
         binary_version,
@@ -656,8 +656,8 @@ fn is_writable(path: &Path) -> bool {
 
 async fn fetch_github_latest(repo_base: &str) -> Option<String> {
     // Derive api URL from the repo HTML URL.
-    // e.g. "https://github.com/stuinfla/learner-rv" →
-    //      "https://api.github.com/repos/stuinfla/learner-rv/releases/latest"
+    // e.g. "https://github.com/stuinfla/cognitum-learn" →
+    //      "https://api.github.com/repos/stuinfla/cognitum-learn/releases/latest"
     let parts: Vec<&str> = repo_base.trim_end_matches('/').rsplitn(3, '/').collect();
     if parts.len() < 2 {
         return None;
@@ -668,7 +668,7 @@ async fn fetch_github_latest(repo_base: &str) -> Option<String> {
     );
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
-        .user_agent(concat!("learn-rv-doctor/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("cognitum-learn-doctor/", env!("CARGO_PKG_VERSION")))
         .build()
         .ok()?;
     let resp = client.get(&api_url).send().await.ok()?;

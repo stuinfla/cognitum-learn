@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 340" width="800" height="340">
   <rect width="800" height="340" fill="#0d1117" rx="10"/>
-  <text x="400" y="26" fill="#c9d1d9" font-family="monospace,sans-serif" font-size="14" font-weight="bold" text-anchor="middle" letter-spacing="1">THREE WAYS TO USE LEARN-RV</text>
+  <text x="400" y="26" fill="#c9d1d9" font-family="monospace,sans-serif" font-size="14" font-weight="bold" text-anchor="middle" letter-spacing="1">THREE WAYS TO USE COGNITUM-LEARN</text>
 
   <!-- Column 1: Claude Skill (blue) -->
   <rect x="10" y="38" width="248" height="288" rx="8" fill="#0d1b38" stroke="#3b82f6" stroke-width="1.5"/>

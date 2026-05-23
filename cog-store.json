@@ -1,11 +1,11 @@
 {
-  "id": "learn-rv",
-  "name": "Learn-RV",
+  "id": "cognitum-learn",
+  "name": "Cognitum Learn",
   "version": "0.2.3",
   "description": "Turn any YouTube video, PDF, or podcast into a queryable knowledge base — stored in RVF format, entirely on your Seed. Ask questions with timestamped citations. No cloud. No services.",
   "author": "Stuart Kerr <stuart@isovision.ai>",
   "license": "MIT",
-  "repository": "https://github.com/stuinfla/learner-rv",
+  "repository": "https://github.com/stuinfla/cognitum-learn",
   "categories": ["knowledge", "ai", "productivity", "education"],
   "tags": ["video", "youtube", "pdf", "podcast", "rvf", "knowledge-base", "mcp", "citations"],
   "targets": ["cognitum-one"],
@@ -21,7 +21,7 @@
   },
   "install": {
     "type": "tarball",
-    "url": "https://github.com/stuinfla/learner-rv/releases/latest/download/learn-aarch64-apple-darwin.tar.gz",
+    "url": "https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz",
     "install_script": "install.sh",
     "kb_root": "~/Docs/KB"
   },
@@ -31,5 +31,5 @@
   },
   "system_deps": ["yt-dlp", "ffmpeg"],
   "screenshots": [],
-  "changelog": "https://github.com/stuinfla/learner-rv/releases"
+  "changelog": "https://github.com/stuinfla/cognitum-learn/releases"
 }

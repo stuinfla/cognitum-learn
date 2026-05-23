@@ -18,8 +18,8 @@ fixtures/cache/
 .claude/*
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/learn-rv/
-!.claude/skills/learn-rv/**
+!.claude/skills/cognitum-learn/
+!.claude/skills/cognitum-learn/**
 
 # Backup directories from refactors
 crates/*.bak/

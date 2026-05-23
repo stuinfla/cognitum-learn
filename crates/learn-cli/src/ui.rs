@@ -13,7 +13,7 @@ pub async fn run_ui(kb_root: Utf8PathBuf, port: Option<u16>) -> Result<()> {
     // ── Seed discovery before starting the server ─────────────────────────
     check_and_configure_seed().await;
 
-    println!("\nlearn-rv dashboard → {url}");
+    println!("\ncognitum-learn dashboard → {url}");
     println!("Press Ctrl-C to stop.\n");
 
     // Open browser (best-effort)

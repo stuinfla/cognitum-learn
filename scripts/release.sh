@@ -85,5 +85,5 @@ git push origin "${TAG}"
 
 echo ""
 echo "✓ Released ${TAG}"
-echo "  CI: https://github.com/stuinfla/learner-rv/actions"
-echo "  Release: https://github.com/stuinfla/learner-rv/releases/tag/${TAG}"
+echo "  CI: https://github.com/stuinfla/cognitum-learn/actions"
+echo "  Release: https://github.com/stuinfla/cognitum-learn/releases/tag/${TAG}"

@@ -273,7 +273,7 @@ enum Cmd {
     },
     /// Start the local web dashboard (opens in your browser).
     ///
-    /// Serves the Learn-RV UI at http://127.0.0.1:7878 and opens it automatically.
+    /// Serves the Cognitum Learn UI at http://127.0.0.1:7878 and opens it automatically.
     /// The dashboard lets you ingest videos, browse topics, and ask questions
     /// without typing CLI commands.
     ///
@@ -330,7 +330,7 @@ enum ConfigAction {
 /// Called when the binary is invoked with no arguments.
 fn print_orientation() -> ! {
     println!(
-        r#"Learn-RV — Make your Cognitum Seed an expert in anything.
+        r#"Cognitum Learn — Make your Cognitum Seed an expert in anything.
 
 ▶ Demo in 4 commands
   learn doctor                          Verify your setup
@@ -344,8 +344,8 @@ fn print_orientation() -> ! {
   learn setup                           Re-run the first-time wizard (Seed address, API key, …)
 
 KB location:    ~/Docs/KB/<topic>.rvf   (RuVector binary — loads directly onto Cognitum Seed)
-Skill manifest: ~/.claude/skills/learn-rv/SKILL.md
-Repo:           https://github.com/stuinfla/learner-rv"#
+Skill manifest: ~/.claude/skills/cognitum-learn/SKILL.md
+Repo:           https://github.com/stuinfla/cognitum-learn"#
     );
     std::process::exit(0);
 }

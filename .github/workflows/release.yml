@@ -242,7 +242,7 @@ jobs:
       # ----- Package ---------------------------------------------------------
 
       # Stage the binary AND the Claude Code skill manifest so a single tarball
-      # extract drops everything the user needs into ~/.claude/skills/learn-rv/.
+      # extract drops everything the user needs into ~/.claude/skills/cognitum-learn/.
       # Tarball layout:
       #   learn-<target>/
       #     bin/learn              (or learn.exe on Windows)
@@ -272,17 +272,17 @@ jobs:
             codesign --sign - --force --preserve-metadata=identifier,entitlements \
               "$STAGE_DIR/bin/learn"
           fi
-          [ -f .claude/skills/learn-rv/SKILL.md ] && cp .claude/skills/learn-rv/SKILL.md "$STAGE_DIR/" || true
+          [ -f .claude/skills/cognitum-learn/SKILL.md ] && cp .claude/skills/cognitum-learn/SKILL.md "$STAGE_DIR/" || true
           [ -f README.md ]      && cp README.md      "$STAGE_DIR/" || true
           [ -f LICENSE-MIT ]    && cp LICENSE-MIT    "$STAGE_DIR/" || true
           [ -f LICENSE-APACHE ] && cp LICENSE-APACHE "$STAGE_DIR/" || true
-          # Generate install.sh — drops the skill folder into ~/.claude/skills/learn-rv/
+          # Generate install.sh — drops the skill folder into ~/.claude/skills/cognitum-learn/
           # and symlinks the binary into ~/.cargo/bin (or ~/.local/bin as fallback).
           cat > "$STAGE_DIR/install.sh" <<'INSTALL_EOF'
           #!/usr/bin/env bash
           set -euo pipefail
           HERE="$(cd "$(dirname "$0")" && pwd)"
-          SKILL_DIR="$HOME/.claude/skills/learn-rv"
+          SKILL_DIR="$HOME/.claude/skills/cognitum-learn"
           mkdir -p "$SKILL_DIR/bin"
           cp "$HERE/SKILL.md" "$SKILL_DIR/SKILL.md"
           cp "$HERE/bin/learn" "$SKILL_DIR/bin/learn"
@@ -315,7 +315,7 @@ jobs:
             exit 1
           }
           Copy-Item $bin "$stage/bin/"
-          if (Test-Path .claude/skills/learn-rv/SKILL.md) { Copy-Item .claude/skills/learn-rv/SKILL.md $stage }
+          if (Test-Path .claude/skills/cognitum-learn/SKILL.md) { Copy-Item .claude/skills/cognitum-learn/SKILL.md $stage }
           if (Test-Path README.md)      { Copy-Item README.md      $stage }
           if (Test-Path LICENSE-MIT)    { Copy-Item LICENSE-MIT    $stage }
           if (Test-Path LICENSE-APACHE) { Copy-Item LICENSE-APACHE $stage }

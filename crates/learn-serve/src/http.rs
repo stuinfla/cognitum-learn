@@ -69,7 +69,7 @@ pub async fn run(kb_root: Utf8PathBuf, port: u16) -> anyhow::Result<()> {
     let app = build_router(kb_root);
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("learn-rv dashboard → http://{addr}");
+    tracing::info!("cognitum-learn dashboard → http://{addr}");
     axum::serve(listener, app).await?;
     Ok(())
 }

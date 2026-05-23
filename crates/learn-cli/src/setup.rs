@@ -195,7 +195,7 @@ pub async fn maybe_run_first_time(kb_root: &camino::Utf8Path) -> bool {
     println!(
         "  {}  {}",
         "◆".bright_cyan().bold(),
-        "Learn-RV — first run.".bold()
+        "Cognitum Learn — first run.".bold()
     );
     println!(
         "  {}",
@@ -224,7 +224,7 @@ fn print_header() {
         "  {}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_cyan()
     );
-    println!("  {}  Learn-RV Setup", "◆".bright_cyan().bold());
+    println!("  {}  Cognitum Learn Setup", "◆".bright_cyan().bold());
     println!(
         "     {}",
         "Make your Cognitum Seed an expert in anything.".dimmed()

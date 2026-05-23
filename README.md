@@ -1,14 +1,14 @@
-# Learn-RV
+# Cognitum Learn
 
 ![Hero: videos and content become an instant expert on your Cognitum Seed](assets/hero.svg)
 
 **You have a Cognitum One Seed. You want it to be a genius on something that matters to you.**
 
-Pick any topic — cooking, investing, a medical condition, a sport, a language. Learn-RV finds the best videos and content on the internet, downloads everything, reads every word, and turns it into a searchable expert that lives on your Seed. Then ask it anything, in plain language, and it answers with citations back to the exact moment in the exact video.
+Pick any topic — cooking, investing, a medical condition, a sport, a language. Cognitum Learn finds the best videos and content on the internet, downloads everything, reads every word, and turns it into a searchable expert that lives on your Seed. Then ask it anything, in plain language, and it answers with citations back to the exact moment in the exact video.
 
 No cloud account. No subscription. No ongoing fees. Your knowledge, on your device, working offline.
 
-![Learn-RV overview](assets/diagrams/top-level-invocation.svg)
+![Cognitum Learn overview](assets/diagrams/top-level-invocation.svg)
 
 <details>
 <summary>Overview diagram (text version for accessibility)</summary>
@@ -46,7 +46,7 @@ Talk to Claude            Use the CLI              Use MCP Server
 
 ```bash
 # 1. Install (any platform, ~5 min; needs Rust + RuVector sibling clone — see “One-time setup” below)
-git clone https://github.com/stuinfla/learner-rv.git && cd learner-rv
+git clone https://github.com/stuinfla/cognitum-learn.git && cd cognitum-learn
 git clone https://github.com/ruvnet/RuVector.git ../RuVector
 cargo install --path crates/learn-cli
 
@@ -56,7 +56,7 @@ learn doctor
 # (or run the guided wizard, which walks you through deps, model, and Seed binding)
 learn setup
 
-# 3. Pick a topic and let Learn-RV find the best videos
+# 3. Pick a topic and let Cognitum Learn find the best videos
 learn study "sous vide cooking techniques"
 # → Shows a shortlist of recommended videos, confirm to ingest
 
@@ -179,7 +179,7 @@ How a Cognitum Seed decides its store dimension:
 2. **A fresh store also locks to the first vector written.** If no flag is set, the dimension is fixed by whatever writes first.
 3. **The store is single-tenant.** One active store holds one dimension. The sensor pipeline and a knowledge base cannot share a store at different dimensions — so for the "build an expert" use case, the store is given over to the KB.
 
-Learn-RV embeds at **384 dimensions** (BGE-small-en-v1.5) by default. To make a Seed accept those vectors:
+Cognitum Learn embeds at **384 dimensions** (BGE-small-en-v1.5) by default. To make a Seed accept those vectors:
 
 ```bash
 # On the Seed (over SSH), point the agent at 384 and start with a clean store:
@@ -202,7 +202,7 @@ A push to a Seed whose store is configured for a different dimension fails fast 
 
 Whether you prefer a point-and-click dashboard, talking to Claude, typing commands, or wiring it into an AI workflow — it all leads to the same place: your knowledge, cited, on your device.
 
-![Three ways to use Learn-RV](assets/three-modes.svg)
+![Three ways to use Cognitum Learn](assets/three-modes.svg)
 
 <details>
 <summary>Three modes (text version for accessibility)</summary>
@@ -226,7 +226,7 @@ No syntax needed.                                     anchored to a video moment
 
 ### 🤖 As a Claude Code skill (just talk to Claude)
 
-Learn-RV installs as a global Claude Code skill. In any Claude session, just describe what you want:
+Cognitum Learn installs as a global Claude Code skill. In any Claude session, just describe what you want:
 
 > "Build me a knowledge base on Japanese knife sharpening."  
 > "Watch this video and remember it: https://youtu.be/QZMljuD10sU"  
@@ -263,7 +263,7 @@ learn push french-cooking
 // ~/.claude/mcp.json
 {
   "mcpServers": {
-    "learn-rv": {
+    "cognitum-learn": {
       "command": "learn",
       "args": ["serve", "your-topic-name"]
     }
@@ -287,7 +287,7 @@ A self-contained React dashboard served by the built-in Axum bridge — everythi
 
 ### Discovery + ingestion
 
-**`learn study`** — Strategic: describe what you want to learn. Learn-RV discovers a curriculum, ranks candidates, shows a shortlist, ingests on confirmation.
+**`learn study`** — Strategic: describe what you want to learn. Cognitum Learn discovers a curriculum, ranks candidates, shows a shortlist, ingests on confirmation.
 
 ```bash
 learn study "How to make laminated pastry"
@@ -475,27 +475,27 @@ Per-topic isolation is total. Drop a topic by deleting one file. Move the whole 
 **Build from source — recommended (always the latest, any platform, Rust toolchain required):**
 
 ```bash
-git clone https://github.com/stuinfla/learner-rv.git
-cd learner-rv
+git clone https://github.com/stuinfla/cognitum-learn.git
+cd cognitum-learn
 git clone https://github.com/ruvnet/RuVector.git ../RuVector
 cargo install --path crates/learn-cli
-mkdir -p ~/.claude/skills/learn-rv
-cp .claude/skills/learn-rv/SKILL.md ~/.claude/skills/learn-rv/SKILL.md
+mkdir -p ~/.claude/skills/cognitum-learn
+cp .claude/skills/cognitum-learn/SKILL.md ~/.claude/skills/cognitum-learn/SKILL.md
 ```
 
 **Prebuilt binaries (faster, but may lag behind `main` — M-series Mac / Linux x86_64):**
 
 ```bash
 # M-series Mac
-curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-aarch64-apple-darwin.tar.gz \
+curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz \
   | tar xz -C /tmp && /tmp/learn-aarch64-apple-darwin/install.sh
 
 # Linux x86_64
-curl -L https://github.com/stuinfla/learner-rv/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz \
+curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz \
   | tar xz -C /tmp && /tmp/learn-x86_64-unknown-linux-gnu/install.sh
 ```
 
-`install.sh` symlinks the binary to `~/.cargo/bin/learn` and drops the Claude Code skill into `~/.claude/skills/learn-rv/`.
+`install.sh` symlinks the binary to `~/.cargo/bin/learn` and drops the Claude Code skill into `~/.claude/skills/cognitum-learn/`.
 
 **Runtime dependencies:**
 ```bash
@@ -581,4 +581,4 @@ Contributions welcome. Open an issue before sending a PR larger than ~50 lines s
 
 ---
 
-*Built with [RuVector](https://github.com/ruvnet/ruvector) · PolyForm Noncommercial 1.0.0 · [Releases](https://github.com/stuinfla/learner-rv/releases)*
+*Built with [RuVector](https://github.com/ruvnet/ruvector) · PolyForm Noncommercial 1.0.0 · [Releases](https://github.com/stuinfla/cognitum-learn/releases)*
