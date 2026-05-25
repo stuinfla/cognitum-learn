@@ -13,7 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 camino = { version = "1", features = ["serde1"] }
 sha2 = "0.10"
-ruvector-graph = { git = "https://github.com/ruvnet/RuVector.git", default-features = false, features = ["storage"] }
+ruvector-graph = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96", default-features = false, features = ["storage"] }
 petgraph = "0.6"
 
 [dev-dependencies]

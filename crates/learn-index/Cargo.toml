@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "RVF HNSW index facade for learn-rs (imports rvf-runtime / rvf-index)."
+description = "RVF HNSW index facade for cognitum-learn (imports rvf-runtime / rvf-index)."
 
 [dependencies]
 learn-core.workspace = true
@@ -15,12 +15,12 @@ camino.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-rvf-runtime = { git = "https://github.com/ruvnet/RuVector.git", features = ["std"] }
-rvf-types   = { git = "https://github.com/ruvnet/RuVector.git",   features = ["std"] }
+rvf-runtime = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96", features = ["std"] }
+rvf-types   = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96",   features = ["std"] }
 # rvf-index is not required for the facade; rvf-runtime contains the HNSW search.
 # rvf-index   = { path = "../../../ruvector/crates/rvf/rvf-index",   features = ["std"] }
 
-ruvector-diskann = { git = "https://github.com/ruvnet/RuVector.git" }
+ruvector-diskann = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96" }
 blake3 = "1"
 
 [dev-dependencies]

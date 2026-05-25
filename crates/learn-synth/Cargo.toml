@@ -21,7 +21,7 @@ dirs = "5.0"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 regex = "1"
 
-ruvllm = { git = "https://github.com/ruvnet/RuVector.git", default-features = false, features = ["minimal", "async-runtime"] }
+ruvllm = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96", default-features = false, features = ["minimal", "async-runtime"] }
 
 [dev-dependencies]
 serial_test = "3"

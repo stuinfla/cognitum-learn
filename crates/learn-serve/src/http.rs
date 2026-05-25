@@ -450,7 +450,7 @@ async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     };
 
     Json(json!({
-        "model": "all-MiniLM-L6-v2",
+        "model": "BGE-small-en-v1.5",
         "kb_root": state.kb_root.as_str(),
         "seed": { "connected": seed_connected, "ip": seed_addr }
     }))

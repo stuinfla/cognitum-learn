@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "ReasoningBank — JSONL-backed trajectory store with cosine retrieval for learn-rs."
+description = "ReasoningBank — JSONL-backed trajectory store with cosine retrieval for cognitum-learn."
 
 [dependencies]
 learn-core.workspace = true

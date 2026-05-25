@@ -506,12 +506,15 @@ Note: as of v0.5.4 you no longer need to clone the sibling `RuVector` repo — c
 
 ```bash
 # M-series Mac
-curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz \
-  | tar xz -C /tmp && /tmp/learn-aarch64-apple-darwin/install.sh
+T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz | tar xz -C "$T" && "$T/learn-aarch64-apple-darwin/install.sh"
 
 # Linux x86_64
-curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz \
-  | tar xz -C /tmp && /tmp/learn-x86_64-unknown-linux-gnu/install.sh
+T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-x86_64-unknown-linux-gnu.tar.gz | tar xz -C "$T" && "$T/learn-x86_64-unknown-linux-gnu/install.sh"
+
+# Linux aarch64 (Raspberry Pi 5, Jetson, ARM servers)
+T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-unknown-linux-gnu.tar.gz | tar xz -C "$T" && "$T/learn-aarch64-unknown-linux-gnu/install.sh"
+
+# Windows x86_64 — see the .zip artifact on the GitHub releases page
 ```
 
 `install.sh` symlinks the binary to `~/.cargo/bin/learn` and drops the Claude Code skill into `~/.claude/skills/cognitum-learn/`.
@@ -554,9 +557,9 @@ cp .env.example .env
 
 | Platform | Binary? | Notes |
 |---|---|---|
-| M-series Mac (`aarch64-apple-darwin`) | ✅ v0.2.9+ | Primary, fully supported |
-| Linux x86_64 (`x86_64-unknown-linux-gnu`) | ✅ v0.2.9+ | Captions-only (no local Whisper on Linux) |
-| Windows (`x86_64-pc-windows-msvc`) | ✅ v0.2.9+ | No on-device ASR (whisper-rs is Apple-only) |
+| M-series Mac (`aarch64-apple-darwin`) | ✅ v0.5.4+ | Primary, fully supported |
+| Linux x86_64 (`x86_64-unknown-linux-gnu`) | ✅ v0.5.4+ | Captions-only (no local Whisper on Linux) |
+| Windows (`x86_64-pc-windows-msvc`) | ✅ v0.5.4+ | No on-device ASR (whisper-rs is Apple-only) |
 | Intel Mac (`x86_64-apple-darwin`) | Build from source | macOS-13 runner deprecated by GitHub |
 | Linux ARM64 | Build from source | cross-Docker can't reach RuVector path-deps |
 
@@ -564,7 +567,7 @@ cp .env.example .env
 
 <details><summary>⚠️ Honest caveats</summary>
 
-Current state: v0.2.17 (2026-05-21)
+Current state: v0.5.4 (2026-05-25)
 
 - **Linux ARM64 + Intel Mac binaries are not published.** Build from source. Reasons: `cross` Docker cannot reach the `../ruvector` sibling path-dep; macOS-13 runner deprecated.
 - **Coherence KPI** uses Fiedler eigenvalue × NN-cosine density — a useful relative health signal, not a research-grade IIT Φ.
