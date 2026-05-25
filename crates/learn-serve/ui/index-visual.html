@@ -659,13 +659,17 @@
     if (mode === 'live' && resolvedPlaylist) {
       pl = resolvedPlaylist;
       document.getElementById('playlistActions').style.display = '';
-      // Default the topic name to the slugified playlist title and let user edit
+      // Default the topic name to the slugified playlist title — but ONLY if
+      // the user hasn't already typed an override. Re-entering Beat 2 (via
+      // pipeline-strip click or back arrow) must preserve the manual choice.
       const tnRow = document.getElementById('topicNameRow');
       const tnInput = document.getElementById('topicNameInput');
       tnRow.style.display = '';
-      tnInput.value = slugify(pl.title);
+      if (!tnInput.dataset.userEdited && !tnInput.value.trim()) {
+        tnInput.value = slugify(pl.title);
+      }
       updateTopicPreview();
-      tnInput.oninput = updateTopicPreview;
+      tnInput.oninput = function() { tnInput.dataset.userEdited = '1'; updateTopicPreview(); };
       // Show "Expand" only when starting from a single video (gives user the
       // 20-video deep-dive offer Stuart asked for).
       document.getElementById('expandBtn').style.display = (pl.count === 1) ? '' : 'none';

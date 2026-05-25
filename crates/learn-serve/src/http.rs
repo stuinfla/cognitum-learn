@@ -464,10 +464,24 @@ async fn ask(
         })))
     } else {
         let err = String::from_utf8_lossy(&output.stderr).to_string();
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err})),
-        ))
+        // "Abstain" is a legitimate answer — the model is saying "I don't have
+        // enough evidence in the KB to answer that." Surface it as a normal
+        // response with an `abstained: true` flag so the UI can render it
+        // calmly (yellow), not as a hard red error. Hard errors (Dimension
+        // Mismatch, IO, etc.) still get a 500.
+        let lower = err.to_lowercase();
+        if lower.contains("abstain") || lower.contains("insufficient evidence") {
+            Ok(Json(json!({
+                "answer": "(The model abstained — your KB has chunks but none were relevant enough to answer this question. Try rephrasing, or ingest more content on this topic.)",
+                "citations": Vec::<String>::new(),
+                "abstained": true
+            })))
+        } else {
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": err})),
+            ))
+        }
     }
 }
 
