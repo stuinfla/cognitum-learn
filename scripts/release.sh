@@ -65,6 +65,17 @@ if git rev-parse "$TAG" &>/dev/null; then
 fi
 
 # ── QA gate ───────────────────────────────────────────────────────────────────
+#
+# Mirrors CI: fmt-check + clippy + test. If any fails we abort BEFORE
+# bumping/tagging/pushing so broken releases can't reach GitHub. Added
+# 2026-05-25 after three releases (v0.5.0–v0.5.2) shipped tags + commits
+# but failed CI on fmt-check the local script never ran.
+
+echo "Running: cargo fmt --all --check"
+cargo fmt --all --check
+
+echo "Running: cargo clippy --workspace --all-targets -- -D warnings"
+cargo clippy --workspace --all-targets -- -D warnings
 
 echo "Running: cargo test --workspace"
 cargo test --workspace

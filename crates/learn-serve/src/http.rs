@@ -37,10 +37,22 @@ pub fn build_router(kb_root: Utf8PathBuf) -> Router {
     Router::new()
         .route("/", get(serve_ui))
         .route("/visual", get(serve_ui_visual))
-        .route("/assets/01-seed-hero.png", get(|| async { png_response(ASSET_SEED_HERO) }))
-        .route("/assets/02-crystallization.png", get(|| async { png_response(ASSET_CRYSTAL) }))
-        .route("/assets/03-seed-handshake.png", get(|| async { png_response(ASSET_HANDSHAKE) }))
-        .route("/assets/04-thumbnail-cascade.png", get(|| async { png_response(ASSET_CASCADE) }))
+        .route(
+            "/assets/01-seed-hero.png",
+            get(|| async { png_response(ASSET_SEED_HERO) }),
+        )
+        .route(
+            "/assets/02-crystallization.png",
+            get(|| async { png_response(ASSET_CRYSTAL) }),
+        )
+        .route(
+            "/assets/03-seed-handshake.png",
+            get(|| async { png_response(ASSET_HANDSHAKE) }),
+        )
+        .route(
+            "/assets/04-thumbnail-cascade.png",
+            get(|| async { png_response(ASSET_CASCADE) }),
+        )
         .route("/api/health", get(health))
         .route("/api/topics", get(list_topics))
         .route("/api/status", get(status))
@@ -91,13 +103,19 @@ pub async fn run(kb_root: Utf8PathBuf, port: u16) -> anyhow::Result<()> {
 fn png_response(bytes: &'static [u8]) -> impl IntoResponse {
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, "image/png".parse().unwrap());
-    headers.insert(header::CACHE_CONTROL, "public, max-age=31536000, immutable".parse().unwrap());
+    headers.insert(
+        header::CACHE_CONTROL,
+        "public, max-age=31536000, immutable".parse().unwrap(),
+    );
     (headers, bytes)
 }
 
 async fn serve_ui_visual() -> impl IntoResponse {
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+    headers.insert(
+        header::CONTENT_TYPE,
+        "text/html; charset=utf-8".parse().unwrap(),
+    );
     (headers, UI_VISUAL_HTML)
 }
 
@@ -156,7 +174,11 @@ async fn playlist_preview(
     });
 
     let title = raw["title"].as_str().unwrap_or("Untitled").to_string();
-    let uploader = raw["uploader"].as_str().or_else(|| raw["channel"].as_str()).unwrap_or("").to_string();
+    let uploader = raw["uploader"]
+        .as_str()
+        .or_else(|| raw["channel"].as_str())
+        .unwrap_or("")
+        .to_string();
 
     let mut total_duration_s: u64 = 0;
     let mut videos = Vec::with_capacity(entries.len());
@@ -210,8 +232,12 @@ struct StudyQuery {
     depth: String,
 }
 
-fn default_study_videos() -> usize { 20 }
-fn default_study_depth() -> String { "deep".to_string() }
+fn default_study_videos() -> usize {
+    20
+}
+fn default_study_depth() -> String {
+    "deep".to_string()
+}
 
 /// Autonomous curriculum discovery + ingest.
 ///
@@ -242,15 +268,19 @@ async fn study_progress(
             "info", 2, false,
         );
 
-        let learn_bin = std::env::current_exe()
-            .unwrap_or_else(|_| std::path::PathBuf::from("learn"));
+        let learn_bin =
+            std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("learn"));
         let mut child = match tokio::process::Command::new(&learn_bin)
             .args([
-                "study", &topic,
-                "--depth", &depth,
-                "--max-videos", &max_videos,
+                "study",
+                &topic,
+                "--depth",
+                &depth,
+                "--max-videos",
+                &max_videos,
                 "--auto",
-                "--kb-root", kb_root.as_str(),
+                "--kb-root",
+                kb_root.as_str(),
             ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
@@ -258,7 +288,12 @@ async fn study_progress(
         {
             Ok(c) => c,
             Err(e) => {
-                send(&format!("Failed to spawn learn study: {e}"), "error", 100, true);
+                send(
+                    &format!("Failed to spawn learn study: {e}"),
+                    "error",
+                    100,
+                    true,
+                );
                 return;
             }
         };
@@ -268,7 +303,9 @@ async fn study_progress(
             let mut reader = BufReader::new(stderr).lines();
             let mut pct: u8 = 5;
             while let Ok(Some(line)) = reader.next_line().await {
-                if line.trim().is_empty() { continue; }
+                if line.trim().is_empty() {
+                    continue;
+                }
                 // Crude phase-to-percent mapping; the front-end's beat router
                 // does the visual stage routing from these messages.
                 pct = (pct.saturating_add(1)).min(95);
@@ -279,7 +316,12 @@ async fn study_progress(
         let status = child.wait().await;
         match status {
             Ok(s) if s.success() => send("Study complete.", "info", 100, true),
-            Ok(s) => send(&format!("Study failed: exit {:?}", s.code()), "error", 100, true),
+            Ok(s) => send(
+                &format!("Study failed: exit {:?}", s.code()),
+                "error",
+                100,
+                true,
+            ),
             Err(e) => send(&format!("Study wait error: {e}"), "error", 100, true),
         }
     });
@@ -574,8 +616,8 @@ async fn ingest_progress(
 
             // Spawn the same binary running `learn ui` so dashboard and ingest
             // share one tool surface (avoids old-version-in-PATH skew).
-            let learn_bin = std::env::current_exe()
-                .unwrap_or_else(|_| std::path::PathBuf::from("learn"));
+            let learn_bin =
+                std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("learn"));
             let mut child = match tokio::process::Command::new(&learn_bin)
                 .args(&args)
                 .stdout(std::process::Stdio::null())

@@ -250,10 +250,10 @@
     <section class="beat" id="beat-1">
       <div class="beat-eyebrow">Beat 1 · The Paste</div>
       <h2 class="beat-title">Paste a playlist. <em>Or speak a topic.</em></h2>
-      <p class="beat-sub" id="beat1Sub">One field. No setup. The Seed has already woken up in the corner — it knows you're here.</p>
+      <p class="beat-sub" id="beat1Sub">One field. Paste a YouTube URL, or just say what you want to learn — Cognitum figures out which.</p>
       <div class="beat-body" style="flex-direction: column; gap: 24px; align-items: center;">
         <div class="paste-row">
-          <input class="paste-input active" id="pasteInput" value="" placeholder="https://youtube.com/playlist?list=PL…"/>
+          <input class="paste-input active" id="pasteInput" value="" placeholder="paste a URL or say 'I want to learn retirement planning'"/>
           <button class="hero-cta" id="resolveBtn" onclick="onResolveClick()">Resolve →</button>
         </div>
         <div class="resolve-status" id="resolveStatus"></div>
@@ -592,49 +592,90 @@
     }
   }
 
+  function looksLikeUrl(s) {
+    // YouTube URLs: youtube.com/*, youtu.be/*, m.youtube.com/*, with or without protocol
+    // Generic URLs: anything starting with http:// or https://
+    return /^https?:\/\//i.test(s) ||
+           /^(www\.|m\.)?(youtube\.com|youtu\.be)[\/?]/i.test(s);
+  }
+
+  function titleCase(s) {
+    return String(s).split(/\s+/).map(function(w) {
+      return w.length ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w;
+    }).join(' ');
+  }
+
   async function onResolveClick() {
     const input = document.getElementById('pasteInput');
     const status = document.getElementById('resolveStatus');
-    const url = input.value.trim();
-    if (!url) {
+    const text = input.value.trim();
+    if (!text) {
       clearChildren(status);
-      const err = document.createElement('span'); err.className = 'err'; err.textContent = 'Paste a URL first.';
+      const err = document.createElement('span'); err.className = 'err';
+      err.textContent = 'Type a topic or paste a URL.';
       status.appendChild(err);
       return;
     }
     setMode('live');
     clearChildren(status);
-    const spin = document.createElement('span');
-    spin.className = 'spin'; spin.textContent = '◐';
-    status.appendChild(spin);
-    status.appendChild(document.createTextNode(' Resolving playlist…'));
-    try {
-      const r = await fetch('/api/playlist/preview', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url })
-      });
-      if (!r.ok) {
-        const e = await r.json();
+
+    if (looksLikeUrl(text)) {
+      // URL path → resolve via yt-dlp
+      const spin = document.createElement('span');
+      spin.className = 'spin'; spin.textContent = '◐';
+      status.appendChild(spin);
+      status.appendChild(document.createTextNode(' Resolving playlist…'));
+      try {
+        const r = await fetch('/api/playlist/preview', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: text })
+        });
+        if (!r.ok) {
+          const e = await r.json();
+          clearChildren(status);
+          const err = document.createElement('span'); err.className = 'err';
+          err.textContent = 'Could not resolve: ' + (e.error || r.statusText);
+          status.appendChild(err);
+          return;
+        }
+        const data = await r.json();
+        data.kind = 'url';
+        data.url = text;
+        resolvedPlaylist = data;
+        clearChildren(status);
+        const ok = document.createElement('span'); ok.className = 'ok';
+        ok.textContent = '✓ Resolved · ' + data.count + ' videos · ' + Math.round(data.total_duration_s / 60) + ' min';
+        status.appendChild(ok);
+        document.getElementById('sourcePillText').textContent = 'youtube.com · ' + data.title;
+        document.getElementById('sourcePill').classList.add('visible');
+        setTimeout(function() { next(); }, 900);
+      } catch (e) {
         clearChildren(status);
         const err = document.createElement('span'); err.className = 'err';
-        err.textContent = 'Could not resolve: ' + (e.error || r.statusText);
+        err.textContent = 'Network error: ' + e.message;
         status.appendChild(err);
-        return;
       }
-      const data = await r.json();
-      resolvedPlaylist = data;
-      clearChildren(status);
+    } else {
+      // Topic phrase path → synthesize a "phantom playlist" preview and route
+      // through the same beats; onConfirmIngest will branch to /api/study/progress
+      const cleanPhrase = text.replace(/^(i want to learn|teach me|i want to study|study|learn)\s+(about\s+)?/i, '').trim();
+      const phrase = cleanPhrase || text;
+      resolvedPlaylist = {
+        kind: 'topic',
+        topic: phrase,
+        title: titleCase(phrase),
+        uploader: 'Cognitum will discover sources for you',
+        count: 20,
+        total_duration_s: 18000, // ~5h estimate
+        estimated_words: 75000,
+        videos: [],
+      };
       const ok = document.createElement('span'); ok.className = 'ok';
-      ok.textContent = '✓ Resolved · ' + data.count + ' videos · ' + Math.round(data.total_duration_s / 60) + ' min';
+      ok.textContent = '✓ Topic recognized · I\'ll find ~20 high-signal videos and build a deep-dive KB';
       status.appendChild(ok);
-      document.getElementById('sourcePillText').textContent = 'youtube.com · ' + data.title;
+      document.getElementById('sourcePillText').textContent = 'topic · ' + phrase;
       document.getElementById('sourcePill').classList.add('visible');
       setTimeout(function() { next(); }, 900);
-    } catch (e) {
-      clearChildren(status);
-      const err = document.createElement('span'); err.className = 'err';
-      err.textContent = 'Network error: ' + e.message;
-      status.appendChild(err);
     }
   }
 
@@ -656,23 +697,33 @@
 
   function animateReveal() {
     let pl;
+    const beat2Sub = document.getElementById('beat2Sub');
     if (mode === 'live' && resolvedPlaylist) {
       pl = resolvedPlaylist;
       document.getElementById('playlistActions').style.display = '';
-      // Default the topic name to the slugified playlist title — but ONLY if
-      // the user hasn't already typed an override. Re-entering Beat 2 (via
-      // pipeline-strip click or back arrow) must preserve the manual choice.
       const tnRow = document.getElementById('topicNameRow');
       const tnInput = document.getElementById('topicNameInput');
       tnRow.style.display = '';
       if (!tnInput.dataset.userEdited && !tnInput.value.trim()) {
-        tnInput.value = slugify(pl.title);
+        tnInput.value = slugify(pl.topic || pl.title);
       }
       updateTopicPreview();
       tnInput.oninput = function() { tnInput.dataset.userEdited = '1'; updateTopicPreview(); };
-      // Show "Expand" only when starting from a single video (gives user the
-      // 20-video deep-dive offer Stuart asked for).
-      document.getElementById('expandBtn').style.display = (pl.count === 1) ? '' : 'none';
+
+      const buildBtn = document.querySelector('#playlistActions .hero-cta:not(.secondary)');
+      const expandBtn = document.getElementById('expandBtn');
+
+      if (pl.kind === 'topic') {
+        // Topic phrase path — auto-discovery via learn study
+        beat2Sub.textContent = 'No URL needed. Cognitum will find the best ~20 videos on this topic, watch them all, and build you the deep-dive KB.';
+        expandBtn.style.display = 'none';
+        if (buildBtn) buildBtn.textContent = 'Discover & build my knowledge base →';
+      } else {
+        // URL path — playlist or single video
+        beat2Sub.textContent = 'Cognitum resolved your playlist before touching it. You see the scale first.';
+        expandBtn.style.display = (pl.count === 1) ? '' : 'none';
+        if (buildBtn) buildBtn.textContent = 'Build my knowledge base →';
+      }
     } else {
       pl = mockPlaylist();
       document.getElementById('playlistActions').style.display = 'none';
@@ -830,7 +881,12 @@
   function onConfirmIngest() {
     if (!resolvedPlaylist) return;
     show(3);
-    setTimeout(startLiveIngest, 2200);
+    // Branch on input kind: topic phrase → autonomous study; URL → direct ingest.
+    if (resolvedPlaylist.kind === 'topic') {
+      setTimeout(function() { startLiveStudy(getTopicSlug()); }, 2200);
+    } else {
+      setTimeout(startLiveIngest, 2200);
+    }
   }
 
   function onExpandToStudy() {
