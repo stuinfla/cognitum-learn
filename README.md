@@ -45,32 +45,36 @@ Talk to Claude            Use the CLI              Use MCP Server
 </details>
 
 ```bash
-# 1. Install (any platform, ~5 min; needs Rust + RuVector sibling clone — see “One-time setup” below)
-git clone https://github.com/stuinfla/cognitum-learn.git && cd cognitum-learn
-git clone https://github.com/ruvnet/RuVector.git ../RuVector
-cargo install --path crates/learn-cli
+# 1. Install — one command (requires Rust toolchain: https://rustup.rs)
+cargo install --git https://github.com/stuinfla/cognitum-learn learn-cli
 
-# 2. Check everything is ready (also auto-fetches the BGE embedder on first use, ~130 MB)
+# 2. Install system deps for video + audio (one-time)
+brew install yt-dlp ffmpeg          # macOS
+# sudo apt install yt-dlp ffmpeg    # Debian/Ubuntu
+
+# 3. Verify (auto-fetches the BGE embedder on first use, ~130 MB)
 learn doctor
 
-# (or run the guided wizard, which walks you through deps, model, and Seed binding)
-learn setup
+# 4. Open the visual dashboard at http://127.0.0.1:7878/visual
+learn ui
 
-# 3. Pick a topic and let Cognitum Learn find the best videos
-learn study "sous vide cooking techniques"
-# → Shows a shortlist of recommended videos, confirm to ingest
+# — OR drive it from the CLI —
 
-# 4. Ask your new expert anything
+# 5. Build your first KB from a topic phrase OR YouTube URL
+learn study "sous vide cooking techniques"     # autonomous discovery + ingest
+# learn ingest "https://youtube.com/playlist?..."  # ingest a specific playlist
+
+# 6. Ask your new expert anything (cited answers w/ timestamps)
 learn ask sous-vide "What temperature for a medium-rare steak?"
 # → "54°C for 1–4 hours gives perfect medium-rare edge-to-edge [Sous Vide Everything @ 3:12]"
 
-# 5. Chat with your expert (multi-turn, remembers the conversation)
+# 7. Multi-turn chat that remembers the conversation
 learn chat sous-vide
 ```
 
 > Your knowledge base lives at `~/Docs/KB/sous-vide.rvf` — one file you own completely.
 >
-> Prebuilt M-series-Mac / Linux-x86_64 binaries are also available — see [📂 One-time setup](#-one-time-setup) below. The `cargo install --path` route above is always the freshest build.
+> **Don't want to install Rust?** Download a prebuilt binary from the [latest release](https://github.com/stuinfla/cognitum-learn/releases/latest) — Apple Silicon, Linux x86_64/aarch64, and Windows x86_64 builds are signed and published every tag.
 
 ---
 
@@ -472,18 +476,33 @@ Per-topic isolation is total. Drop a topic by deleting one file. Move the whole 
 
 <details><summary>📂 One-time setup</summary>
 
-**Build from source — recommended (always the latest, any platform, Rust toolchain required):**
+**Recommended — install from GitHub via cargo (one command, any platform, Rust toolchain required):**
+
+```bash
+cargo install --git https://github.com/stuinfla/cognitum-learn learn-cli
+```
+
+This fetches `cognitum-learn` and its RuVector dependencies directly from GitHub — no manual sibling-clone, no `--path`. Compiles in ~3-5 min on a modern laptop, installs the `learn` binary into `~/.cargo/bin/`.
+
+**Optional — pin a specific release tag** for reproducibility:
+
+```bash
+cargo install --git https://github.com/stuinfla/cognitum-learn --tag v0.5.4 learn-cli
+```
+
+**Build from a local checkout instead** (only needed if you want to hack on the workspace):
 
 ```bash
 git clone https://github.com/stuinfla/cognitum-learn.git
 cd cognitum-learn
-git clone https://github.com/ruvnet/RuVector.git ../RuVector
 cargo install --path crates/learn-cli
 mkdir -p ~/.claude/skills/cognitum-learn
 cp .claude/skills/cognitum-learn/SKILL.md ~/.claude/skills/cognitum-learn/SKILL.md
 ```
 
-**Prebuilt binaries (faster, but may lag behind `main` — M-series Mac / Linux x86_64):**
+Note: as of v0.5.4 you no longer need to clone the sibling `RuVector` repo — cargo fetches it from `github.com/ruvnet/RuVector` automatically.
+
+**Prebuilt binaries (no Rust toolchain required — M-series Mac / Linux x86_64 / Linux aarch64 / Windows x86_64):**
 
 ```bash
 # M-series Mac
