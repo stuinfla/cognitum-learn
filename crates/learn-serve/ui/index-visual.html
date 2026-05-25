@@ -100,7 +100,13 @@
   .thumb .placeholder-arrow { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; background: rgba(252,211,77,0.4); clip-path: polygon(20% 20%, 20% 80%, 85% 50%); }
   .thumb .gradient-fill { position: absolute; inset: 6px; background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(252,211,77,0.1)); border-radius: 2px; }
   @keyframes thumb-pop { from { opacity: 0; transform: translateY(8px) scale(0.95); } to { opacity: 1; transform: none; } }
-  .playlist-actions { display: flex; justify-content: center; gap: 12px; margin-top: 20px; }
+  .playlist-actions { display: flex; justify-content: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+  .topic-name-row { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 20px; padding-top: 18px; border-top: 1px dashed var(--border); }
+  .topic-name-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--emerald-lo); }
+  .topic-name-input { background: var(--bg2); border: 1px solid var(--border); color: var(--fg); padding: 10px 14px; font-family: var(--font-mono); font-size: 13px; border-radius: 4px; }
+  .topic-name-input:focus { outline: none; border-color: var(--amber-hi); }
+  .topic-name-hint { font-family: var(--font-mono); font-size: 10px; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.15em; }
+  .topic-name-hint span { color: var(--amber-hi); text-transform: none; letter-spacing: 0; }
 
   .plan-layout { display: grid; grid-template-columns: 1fr 280px; gap: 56px; width: 100%; max-width: 1100px; align-items: center; }
   .plan-quote { font-family: var(--font-display); font-size: 26px; line-height: 1.35; color: var(--fg); border-left: 2px solid var(--amber-hi); padding-left: 24px; }
@@ -274,7 +280,13 @@
             <div class="playlist-stat"><div class="num" id="stat-words" data-target="94">0</div><div class="label">thousand words</div></div>
           </div>
           <div class="thumbnail-river" id="thumbnailRiver"></div>
+          <div class="topic-name-row" id="topicNameRow" style="display:none;">
+            <label class="topic-name-label">Save as topic</label>
+            <input class="topic-name-input" id="topicNameInput" placeholder="french-baking" />
+            <span class="topic-name-hint" id="topicNameHint">file name on your Seed: <span id="topicNamePreview">—</span>.rvf</span>
+          </div>
           <div class="playlist-actions" id="playlistActions" style="display:none;">
+            <button class="hero-cta secondary" id="expandBtn" style="display:none;" onclick="onExpandToStudy()">Expand → 20-video deep-dive</button>
             <button class="hero-cta" onclick="onConfirmIngest()">Build my knowledge base →</button>
           </div>
         </div>
@@ -626,14 +638,41 @@
     }
   }
 
+  function slugify(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 64) || 'untitled';
+  }
+
+  function getTopicSlug() {
+    // Single source of truth for the topic name used when ingesting.
+    // Prefers the editable input; falls back to slugified playlist title.
+    const input = document.getElementById('topicNameInput');
+    const v = (input && input.value || '').trim();
+    if (v) return slugify(v);
+    return slugify(resolvedPlaylist && resolvedPlaylist.title || 'live-ingest');
+  }
+
   function animateReveal() {
     let pl;
     if (mode === 'live' && resolvedPlaylist) {
       pl = resolvedPlaylist;
       document.getElementById('playlistActions').style.display = '';
+      // Default the topic name to the slugified playlist title and let user edit
+      const tnRow = document.getElementById('topicNameRow');
+      const tnInput = document.getElementById('topicNameInput');
+      tnRow.style.display = '';
+      tnInput.value = slugify(pl.title);
+      updateTopicPreview();
+      tnInput.oninput = updateTopicPreview;
+      // Show "Expand" only when starting from a single video (gives user the
+      // 20-video deep-dive offer Stuart asked for).
+      document.getElementById('expandBtn').style.display = (pl.count === 1) ? '' : 'none';
     } else {
       pl = mockPlaylist();
       document.getElementById('playlistActions').style.display = 'none';
+      document.getElementById('topicNameRow').style.display = 'none';
     }
     document.getElementById('playlistTitle').textContent = pl.title || 'Sample Playlist';
     document.getElementById('playlistUploader').textContent = pl.uploader || 'demo source';
@@ -778,14 +817,43 @@
     };
   }
 
+  function updateTopicPreview() {
+    const slug = getTopicSlug();
+    const el = document.getElementById('topicNamePreview');
+    if (el) el.textContent = slug;
+  }
+
   function onConfirmIngest() {
     if (!resolvedPlaylist) return;
     show(3);
     setTimeout(startLiveIngest, 2200);
   }
 
+  function onExpandToStudy() {
+    // User clicked "Expand → 20-video deep-dive" — switch from playlist ingest
+    // to autonomous study around the topic name.
+    if (!resolvedPlaylist) return;
+    const topic = getTopicSlug();
+    show(3);
+    setTimeout(function() { startLiveStudy(topic); }, 2200);
+  }
+
+  function startLiveStudy(topic) {
+    show(4);
+    const es = new EventSource('/api/study/progress?topic=' + encodeURIComponent(topic) + '&max_videos=20&depth=deep');
+    activeIngestStream = es;
+    es.onmessage = function(ev) {
+      try {
+        const d = JSON.parse(ev.data);
+        applyLiveProgress(d, topic);
+        if (d.done) { es.close(); activeIngestStream = null; onIngestDone(topic); }
+      } catch (e) {}
+    };
+    es.onerror = function() { es.close(); activeIngestStream = null; };
+  }
+
   function startLiveIngest() {
-    const topic = (resolvedPlaylist.title || 'live-ingest').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64);
+    const topic = getTopicSlug();
     const url = document.getElementById('pasteInput').value;
     show(4);
     const es = new EventSource('/api/ingest/progress?source=' + encodeURIComponent(url) + '&topic=' + encodeURIComponent(topic));
@@ -873,7 +941,15 @@
       });
       const d = await r.json();
       clearChildren(ans);
-      ans.textContent = d.answer || '(no answer)';
+      // Surface real backend errors instead of swallowing them as "(no answer)".
+      if (!r.ok || d.error) {
+        const errSpan = document.createElement('span');
+        errSpan.style.color = '#fb7185';
+        errSpan.textContent = 'Error from learn ask: ' + (d.error || ('HTTP ' + r.status));
+        ans.appendChild(errSpan);
+      } else {
+        ans.textContent = d.answer && d.answer.trim() ? d.answer : '(model abstained — KB had no matching content)';
+      }
       clearChildren(cites);
       (d.citations || []).forEach(function(c, i) {
         const row = document.createElement('div');

@@ -46,6 +46,7 @@ pub fn build_router(kb_root: Utf8PathBuf) -> Router {
         .route("/api/status", get(status))
         .route("/api/ask", post(ask))
         .route("/api/ingest/progress", get(ingest_progress))
+        .route("/api/study/progress", get(study_progress))
         .route("/api/playlist/preview", post(playlist_preview))
         .route("/api/seed/discover", post(seed_discover))
         .route("/api/seed/configure", post(seed_configure))
@@ -200,6 +201,93 @@ async fn playlist_preview(
     })))
 }
 
+#[derive(Deserialize)]
+struct StudyQuery {
+    topic: String,
+    #[serde(default = "default_study_videos")]
+    max_videos: usize,
+    #[serde(default = "default_study_depth")]
+    depth: String,
+}
+
+fn default_study_videos() -> usize { 20 }
+fn default_study_depth() -> String { "deep".to_string() }
+
+/// Autonomous curriculum discovery + ingest.
+///
+/// Wraps `learn study <topic> --depth <depth> --max-videos N --auto` and
+/// streams progress as SSE events with the same `{message, level, progress,
+/// done}` shape as `/api/ingest/progress`. Used by the visual dashboard's
+/// "Expand to a 20-video deep-dive" button when the user starts from a
+/// single video or a topic phrase.
+async fn study_progress(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<StudyQuery>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<String>(64);
+    let kb_root = state.kb_root.to_string();
+    let topic = q.topic.clone();
+    let max_videos = q.max_videos.to_string();
+    let depth = q.depth.clone();
+
+    tokio::spawn(async move {
+        let send = |msg: &str, level: &str, pct: u8, done: bool| {
+            let _ = tx.try_send(
+                json!({"message": msg, "level": level, "progress": pct, "done": done}).to_string(),
+            );
+        };
+
+        send(
+            &format!("Starting autonomous study: \"{topic}\" · depth={depth} · target={max_videos} videos…"),
+            "info", 2, false,
+        );
+
+        let learn_bin = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("learn"));
+        let mut child = match tokio::process::Command::new(&learn_bin)
+            .args([
+                "study", &topic,
+                "--depth", &depth,
+                "--max-videos", &max_videos,
+                "--auto",
+                "--kb-root", kb_root.as_str(),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                send(&format!("Failed to spawn learn study: {e}"), "error", 100, true);
+                return;
+            }
+        };
+
+        if let Some(stderr) = child.stderr.take() {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut reader = BufReader::new(stderr).lines();
+            let mut pct: u8 = 5;
+            while let Ok(Some(line)) = reader.next_line().await {
+                if line.trim().is_empty() { continue; }
+                // Crude phase-to-percent mapping; the front-end's beat router
+                // does the visual stage routing from these messages.
+                pct = (pct.saturating_add(1)).min(95);
+                send(&line, "info", pct, false);
+            }
+        }
+
+        let status = child.wait().await;
+        match status {
+            Ok(s) if s.success() => send("Study complete.", "info", 100, true),
+            Ok(s) => send(&format!("Study failed: exit {:?}", s.code()), "error", 100, true),
+            Err(e) => send(&format!("Study wait error: {e}"), "error", 100, true),
+        }
+    });
+
+    let stream = ReceiverStream::new(rx).map(|s| Ok(Event::default().data(s)));
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
 async fn serve_ui() -> impl IntoResponse {
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -336,7 +424,12 @@ async fn ask(
     State(state): State<Arc<AppState>>,
     Json(body): Json<AskBody>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let output = tokio::process::Command::new("learn")
+    // Use the same binary that's serving `learn ui` rather than whatever `learn`
+    // is on $PATH — avoids picking up an older globally-installed version with
+    // a different default embedder (which surfaces as DimensionMismatch at
+    // query time against a KB built with the current version).
+    let bin = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("learn"));
+    let output = tokio::process::Command::new(&bin)
         .args([
             "ask",
             &body.topic,
@@ -465,7 +558,11 @@ async fn ingest_progress(
                 args.extend(["--topic", topic.as_str()]);
             }
 
-            let mut child = match tokio::process::Command::new("learn")
+            // Spawn the same binary running `learn ui` so dashboard and ingest
+            // share one tool surface (avoids old-version-in-PATH skew).
+            let learn_bin = std::env::current_exe()
+                .unwrap_or_else(|_| std::path::PathBuf::from("learn"));
+            let mut child = match tokio::process::Command::new(&learn_bin)
                 .args(&args)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped())
