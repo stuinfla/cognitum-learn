@@ -13,4 +13,4 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
-ruvector-coherence = { path = "../../../ruvector/crates/ruvector-coherence", features = ["spectral"] }
+ruvector-coherence = { git = "https://github.com/ruvnet/RuVector.git", features = ["spectral"] }

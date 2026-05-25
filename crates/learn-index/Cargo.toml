@@ -15,12 +15,12 @@ camino.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-rvf-runtime = { path = "../../../ruvector/crates/rvf/rvf-runtime", features = ["std"] }
-rvf-types   = { path = "../../../ruvector/crates/rvf/rvf-types",   features = ["std"] }
+rvf-runtime = { git = "https://github.com/ruvnet/RuVector.git", features = ["std"] }
+rvf-types   = { git = "https://github.com/ruvnet/RuVector.git",   features = ["std"] }
 # rvf-index is not required for the facade; rvf-runtime contains the HNSW search.
 # rvf-index   = { path = "../../../ruvector/crates/rvf/rvf-index",   features = ["std"] }
 
-ruvector-diskann = { path = "../../../ruvector/crates/ruvector-diskann" }
+ruvector-diskann = { git = "https://github.com/ruvnet/RuVector.git" }
 blake3 = "1"
 
 [dev-dependencies]

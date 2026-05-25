@@ -3577,7 +3577,8 @@ dependencies = [
 
 [[package]]
 name = "ruvector-coherence"
-version = "2.2.0"
+version = "2.2.3"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "serde",
  "serde_json",
@@ -3585,7 +3586,8 @@ dependencies = [
 
 [[package]]
 name = "ruvector-core"
-version = "2.2.0"
+version = "2.2.3"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -3612,7 +3614,8 @@ dependencies = [
 
 [[package]]
 name = "ruvector-diskann"
-version = "2.2.0"
+version = "2.2.3"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "bincode 2.0.1",
  "bytemuck",
@@ -3627,7 +3630,8 @@ dependencies = [
 
 [[package]]
 name = "ruvector-graph"
-version = "2.2.0"
+version = "2.2.3"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -3662,6 +3666,7 @@ dependencies = [
 [[package]]
 name = "ruvector-sona"
 version = "0.2.0"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "crossbeam",
  "getrandom 0.2.17",
@@ -3673,7 +3678,8 @@ dependencies = [
 
 [[package]]
 name = "ruvllm"
-version = "2.2.0"
+version = "2.2.3"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3705,6 +3711,7 @@ dependencies = [
 [[package]]
 name = "rvf-runtime"
 version = "0.2.0"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 dependencies = [
  "rvf-types",
 ]
@@ -3712,6 +3719,7 @@ dependencies = [
 [[package]]
 name = "rvf-types"
 version = "0.2.0"
+source = "git+https://github.com/ruvnet/RuVector.git#cf074121e580a2e2d91a3d0deb0275e989915a96"
 
 [[package]]
 name = "ryu"

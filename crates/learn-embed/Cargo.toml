@@ -14,7 +14,7 @@ tracing.workspace = true
 camino.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-ruvector-sona = { path = "../../../ruvector/crates/sona", default-features = false, features = ["serde-support"] }
+ruvector-sona = { git = "https://github.com/ruvnet/RuVector.git", default-features = false, features = ["serde-support"] }
 
 # ort 2.x — ONNX Runtime bindings. download-binaries fetches the ORT shared
 # library at build time so users need no system-wide install. ndarray feature
