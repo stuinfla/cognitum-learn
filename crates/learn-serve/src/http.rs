@@ -17,6 +17,11 @@ use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tower_http::cors::CorsLayer;
 
 static UI_HTML: &str = include_str!("../ui/index.html");
+static UI_VISUAL_HTML: &str = include_str!("../ui/index-visual.html");
+static ASSET_SEED_HERO: &[u8] = include_bytes!("../ui/assets/01-seed-hero.png");
+static ASSET_CRYSTAL: &[u8] = include_bytes!("../ui/assets/02-crystallization.png");
+static ASSET_HANDSHAKE: &[u8] = include_bytes!("../ui/assets/03-seed-handshake.png");
+static ASSET_CASCADE: &[u8] = include_bytes!("../ui/assets/04-thumbnail-cascade.png");
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
@@ -31,11 +36,17 @@ pub fn build_router(kb_root: Utf8PathBuf) -> Router {
     let state = Arc::new(AppState { kb_root });
     Router::new()
         .route("/", get(serve_ui))
+        .route("/visual", get(serve_ui_visual))
+        .route("/assets/01-seed-hero.png", get(|| async { png_response(ASSET_SEED_HERO) }))
+        .route("/assets/02-crystallization.png", get(|| async { png_response(ASSET_CRYSTAL) }))
+        .route("/assets/03-seed-handshake.png", get(|| async { png_response(ASSET_HANDSHAKE) }))
+        .route("/assets/04-thumbnail-cascade.png", get(|| async { png_response(ASSET_CASCADE) }))
         .route("/api/health", get(health))
         .route("/api/topics", get(list_topics))
         .route("/api/status", get(status))
         .route("/api/ask", post(ask))
         .route("/api/ingest/progress", get(ingest_progress))
+        .route("/api/playlist/preview", post(playlist_preview))
         .route("/api/seed/discover", post(seed_discover))
         .route("/api/seed/configure", post(seed_configure))
         .with_state(state)
@@ -75,6 +86,119 @@ pub async fn run(kb_root: Utf8PathBuf, port: u16) -> anyhow::Result<()> {
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
+
+fn png_response(bytes: &'static [u8]) -> impl IntoResponse {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, "image/png".parse().unwrap());
+    headers.insert(header::CACHE_CONTROL, "public, max-age=31536000, immutable".parse().unwrap());
+    (headers, bytes)
+}
+
+async fn serve_ui_visual() -> impl IntoResponse {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+    (headers, UI_VISUAL_HTML)
+}
+
+#[derive(Deserialize)]
+struct PlaylistPreviewBody {
+    url: String,
+}
+
+/// Resolve a YouTube playlist (or single video URL) to its real metadata.
+///
+/// Uses `yt-dlp --flat-playlist --dump-single-json` which is a metadata-only
+/// call (no downloads). Returns:
+/// - `title`, `uploader`, `count`, `total_duration_s`, `estimated_words`
+/// - `videos`: list of `{id, title, duration_s, thumbnail}`
+///
+/// Used by the visual dashboard's "Reveal" beat so the experience shows
+/// the user's actual playlist, not mock data.
+async fn playlist_preview(
+    Json(body): Json<PlaylistPreviewBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let output = tokio::process::Command::new("yt-dlp")
+        .args([
+            "--flat-playlist",
+            "--dump-single-json",
+            "--no-warnings",
+            "--quiet",
+            &body.url,
+        ])
+        .output()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("yt-dlp failed to spawn: {e}")})),
+            )
+        })?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": err.lines().next().unwrap_or("yt-dlp error").to_string()})),
+        ));
+    }
+
+    let raw: Value = serde_json::from_slice(&output.stdout).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("parse error: {e}")})),
+        )
+    })?;
+
+    let entries = raw["entries"].as_array().cloned().unwrap_or_else(|| {
+        // Single-video URL: yt-dlp returns the video object itself
+        vec![raw.clone()]
+    });
+
+    let title = raw["title"].as_str().unwrap_or("Untitled").to_string();
+    let uploader = raw["uploader"].as_str().or_else(|| raw["channel"].as_str()).unwrap_or("").to_string();
+
+    let mut total_duration_s: u64 = 0;
+    let mut videos = Vec::with_capacity(entries.len());
+    for entry in &entries {
+        let id = entry["id"].as_str().unwrap_or("").to_string();
+        let v_title = entry["title"].as_str().unwrap_or("Untitled").to_string();
+        let duration_s = entry["duration"].as_f64().unwrap_or(0.0) as u64;
+        total_duration_s += duration_s;
+
+        // Prefer the highest-res thumbnail; fall back to /vi/ID/mqdefault.jpg
+        let thumbnail = entry["thumbnails"]
+            .as_array()
+            .and_then(|arr| arr.last())
+            .and_then(|t| t["url"].as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                if !id.is_empty() {
+                    format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg")
+                } else {
+                    String::new()
+                }
+            });
+
+        videos.push(json!({
+            "id": id,
+            "title": v_title,
+            "duration_s": duration_s,
+            "thumbnail": thumbnail,
+        }));
+    }
+
+    // Spoken-word estimate: ~150 words per minute.
+    let estimated_words = (total_duration_s / 60) * 150;
+
+    Ok(Json(json!({
+        "title": title,
+        "uploader": uploader,
+        "count": videos.len(),
+        "total_duration_s": total_duration_s,
+        "estimated_words": estimated_words,
+        "videos": videos,
+    })))
+}
 
 async fn serve_ui() -> impl IntoResponse {
     let mut headers = HeaderMap::new();
