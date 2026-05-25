@@ -48,12 +48,12 @@ fn no_args_prints_orientation_and_exits_zero() {
         "orientation header missing from stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("30-second quickstart"),
-        "quickstart section missing from stdout:\n{stdout}"
+        stdout.contains("Demo in 4 commands"),
+        "demo section missing from stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("learn ingest"),
-        "ingest example missing from stdout:\n{stdout}"
+        stdout.contains("learn study"),
+        "study example missing from stdout:\n{stdout}"
     );
     assert!(
         stdout.contains("~/Docs/KB/<topic>.rvf"),
