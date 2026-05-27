@@ -4,6 +4,34 @@ All notable user-facing changes to `cognitum-learn` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.9] — 2026-05-26
+
+### Fixed
+
+- **`learn forget` now cleans every sidecar.** Previously only `<topic>.rvf`
+  and `<topic>.meta.json` were removed, leaving orphan `<topic>.emb.bin`,
+  `<topic>.summary.md`, `_meta/<topic>.json`, and the entire `_raw/<topic>/`
+  cache directory behind. The stale `.emb.bin` was the worst offender: a
+  re-ingest with a different embedder dimension reused the orphan cache and
+  produced a mixed-dimension KB that silently corrupted retrieval. Now
+  `remove_topic_artifacts` enumerates every artifact a topic can write,
+  deletes them in parallel via worker threads, and reports the bytes freed.
+  (`crates/learn-cli/src/commands.rs`)
+
+### Added
+
+- **`learn forget --force` / `-y`.** Skip the interactive `[y/N]` prompt for
+  scripts and pipelines. Replaces the `echo y | learn forget …` workaround
+  that failed when stdin was already closed.
+  (`crates/learn-cli/src/main.rs`, `commands.rs`)
+- **`learn forget --dry-run`.** Print the deletion plan (every path, vector
+  count, total bytes) without touching the filesystem.
+  (`crates/learn-cli/src/commands.rs`)
+- **Richer confirmation prompt.** The interactive prompt now lists each file
+  with its size and the topic's vector count instead of a generic "this
+  cannot be undone" line.
+  (`crates/learn-cli/src/commands.rs`)
+
 ## [0.5.8] — 2026-05-26
 
 ### Added

@@ -172,6 +172,12 @@ enum Cmd {
         topic: String,
         #[arg(long)]
         video: Option<String>,
+        /// Skip the interactive [y/N] prompt — required for scripts/pipes.
+        #[arg(long, short = 'y', alias = "yes")]
+        force: bool,
+        /// Print what would be deleted, then exit without touching anything.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Dedupe and optimize the HNSW index (does not re-embed; re-ingest to change model/dimension).
     Compact { topic: String },
@@ -460,7 +466,12 @@ async fn main() {
             cadence,
         } => commands::run_watch(topic, channel, cadence),
         Cmd::Eval { topic } => commands::run_regression(topic, kb_root).await,
-        Cmd::Forget { topic, video } => commands::run_forget(topic, video, kb_root),
+        Cmd::Forget {
+            topic,
+            video,
+            force,
+            dry_run,
+        } => commands::run_forget(topic, video, force, dry_run, kb_root),
         Cmd::Compact { topic } => commands::run_compact(topic, kb_root),
         Cmd::Chat {
             topic,

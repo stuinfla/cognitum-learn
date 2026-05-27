@@ -1208,8 +1208,108 @@ fn eval_timestamp_now() -> String {
 
 // ── Forget ───────────────────────────────────────────────────────────────────
 
+/// One artifact slated for deletion by `learn forget`.
+#[derive(Debug, Clone)]
+pub struct ForgetTarget {
+    pub label: &'static str,
+    pub path: Utf8PathBuf,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+}
+
+/// Collect every sidecar/artifact a topic may have written.
+///
+/// Returns ALL candidates regardless of existence so callers can show "(missing)"
+/// or filter as needed. Filter with `.into_iter().filter(|t| t.path.exists())`
+/// before deleting.
+pub fn topic_forget_targets(kb_root: &Utf8PathBuf, topic: &Topic) -> Vec<ForgetTarget> {
+    let t = topic.as_str();
+    let candidates: [(&'static str, Utf8PathBuf, bool); 7] = [
+        ("rvf", topic.rvf_path(kb_root), false),
+        ("meta", kb_root.join(format!("{t}.meta.json")), false),
+        ("emb", kb_root.join(format!("{t}.emb.bin")), false),
+        ("summary", kb_root.join(format!("{t}.summary.md")), false),
+        ("manifest", topic.manifest_path(kb_root), false),
+        (
+            "graph",
+            kb_root.join("_graph").join(format!("{t}.graphdb")),
+            false,
+        ),
+        ("raw", topic.raw_dir(kb_root), true),
+    ];
+    candidates
+        .into_iter()
+        .map(|(label, path, is_dir)| {
+            let size_bytes = path_size(&path, is_dir);
+            ForgetTarget {
+                label,
+                path,
+                is_dir,
+                size_bytes,
+            }
+        })
+        .collect()
+}
+
+fn path_size(path: &Utf8PathBuf, is_dir: bool) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    if is_dir {
+        dir_size_bytes(path.as_std_path())
+    } else {
+        std::fs::metadata(path.as_std_path())
+            .map(|m| m.len())
+            .unwrap_or(0)
+    }
+}
+
+fn dir_size_bytes(dir: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    for entry in read.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        if meta.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&entry.path()));
+        } else {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    total
+}
+
+fn human_bytes(n: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    if n >= GB {
+        format!("{:.2} GB", n as f64 / GB as f64)
+    } else if n >= MB {
+        format!("{:.2} MB", n as f64 / MB as f64)
+    } else if n >= KB {
+        format!("{:.1} KB", n as f64 / KB as f64)
+    } else {
+        format!("{n} B")
+    }
+}
+
+/// Read the vector count from a topic's `.rvf` for the confirmation prompt.
+/// Returns `None` on any error (missing, unreadable, corrupt). Best-effort only.
+fn try_read_vector_count(kb_root: &Utf8PathBuf, topic: &Topic) -> Option<usize> {
+    let idx = LearnIndex::open(kb_root.as_ref(), topic.clone()).ok()?;
+    idx.stats().ok().map(|s| s.vector_count)
+}
+
 /// Drop a topic or one video from the KB.
-pub fn run_forget(topic_str: String, video: Option<String>, kb_root: Utf8PathBuf) -> Result<()> {
+pub fn run_forget(
+    topic_str: String,
+    video: Option<String>,
+    force: bool,
+    dry_run: bool,
+    kb_root: Utf8PathBuf,
+) -> Result<()> {
     let topic = Topic::new(&topic_str)?;
     if let Some(video_id) = video {
         println!(
@@ -1218,20 +1318,67 @@ pub fn run_forget(topic_str: String, video: Option<String>, kb_root: Utf8PathBuf
         );
         return Ok(());
     }
-    eprint!("Delete ALL data for topic {topic_str:?}? This cannot be undone. [y/N]: ");
-    let mut line = String::new();
-    use std::io::BufRead as _;
-    std::io::stdin()
-        .lock()
-        .read_line(&mut line)
-        .map_err(LearnError::Io)?;
-    if !line.trim().eq_ignore_ascii_case("y") {
-        println!("Aborted.");
+
+    let targets = topic_forget_targets(&kb_root, &topic);
+    let present: Vec<&ForgetTarget> = targets.iter().filter(|t| t.path.exists()).collect();
+    let vector_count = try_read_vector_count(&kb_root, &topic);
+    let total_bytes: u64 = present.iter().map(|t| t.size_bytes).sum();
+
+    if present.is_empty() {
+        // Idempotent: forgetting an already-forgotten topic is OK, not an error.
+        println!("Nothing to delete for topic {topic_str:?} (already absent).");
         return Ok(());
     }
+
+    if dry_run {
+        println!(
+            "[dry-run] Would delete for topic {topic_str:?} ({}):",
+            human_bytes(total_bytes)
+        );
+        print_forget_plan(&targets, vector_count);
+        println!("[dry-run] No files touched.");
+        return Ok(());
+    }
+
+    if !force {
+        eprintln!("Delete ALL data for topic {topic_str:?}? This removes:");
+        print_forget_plan(&targets, vector_count);
+        eprintln!("  Total: {}", human_bytes(total_bytes));
+        eprint!("  This cannot be undone. [y/N]: ");
+        let mut line = String::new();
+        use std::io::BufRead as _;
+        std::io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .map_err(LearnError::Io)?;
+        if !line.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
     remove_topic_artifacts(&kb_root, &topic)?;
-    println!("Deleted topic {topic_str:?}.");
+    println!(
+        "Deleted topic {topic_str:?} ({} freed).",
+        human_bytes(total_bytes)
+    );
     Ok(())
+}
+
+/// Pretty-print the deletion plan to stderr in stable order. Used by both the
+/// confirmation prompt and `--dry-run`.
+fn print_forget_plan(targets: &[ForgetTarget], vector_count: Option<usize>) {
+    for t in targets {
+        if !t.path.exists() {
+            continue;
+        }
+        let extra = match (t.label, vector_count) {
+            ("rvf", Some(n)) => format!(" ({n} vectors, {})", human_bytes(t.size_bytes)),
+            _ if t.is_dir => format!(" (dir, {})", human_bytes(t.size_bytes)),
+            _ => format!(" ({})", human_bytes(t.size_bytes)),
+        };
+        eprintln!("  - {}{}", t.path, extra);
+    }
 }
 
 // ── Compact ──────────────────────────────────────────────────────────────────
@@ -1473,26 +1620,31 @@ fn claims_to_hits(claims: &[learn_graph::Claim], video_id: &str) -> Vec<learn_co
 }
 
 /// Remove all persisted artifacts for a topic.
+///
+/// Uses [`topic_forget_targets`] as the single source of truth for which paths
+/// belong to a topic. Deletion runs in parallel across targets via `std::thread`
+/// because the only contention is the filesystem and each path is independent.
+///
+/// Idempotent: missing paths are skipped, not errors.
 pub fn remove_topic_artifacts(kb_root: &Utf8PathBuf, topic: &Topic) -> Result<()> {
-    let rvf = topic.rvf_path(kb_root);
-    let meta_json = kb_root.join(format!("{}.meta.json", topic.as_str()));
-    let graph_db = kb_root
-        .join("_graph")
-        .join(format!("{}.graphdb", topic.as_str()));
-    let manifest = topic.manifest_path(kb_root);
-    let raw_dir = topic.raw_dir(kb_root);
-    for path in &[
-        rvf.as_std_path(),
-        meta_json.as_std_path(),
-        graph_db.as_std_path(),
-        manifest.as_std_path(),
-    ] {
-        if path.exists() {
-            std::fs::remove_file(path).map_err(LearnError::Io)?;
-        }
-    }
-    if raw_dir.exists() {
-        std::fs::remove_dir_all(raw_dir.as_std_path()).map_err(LearnError::Io)?;
+    let targets = topic_forget_targets(kb_root, topic);
+    let handles: Vec<_> = targets
+        .into_iter()
+        .filter(|t| t.path.exists())
+        .map(|t| {
+            std::thread::spawn(move || -> std::io::Result<()> {
+                if t.is_dir {
+                    std::fs::remove_dir_all(t.path.as_std_path())
+                } else {
+                    std::fs::remove_file(t.path.as_std_path())
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join()
+            .map_err(|_| LearnError::Io(std::io::Error::other("forget worker panicked")))?
+            .map_err(LearnError::Io)?;
     }
     Ok(())
 }
@@ -1996,6 +2148,141 @@ mod tests {
         remove_topic_artifacts(&kb_root, &topic).unwrap();
         assert!(!rvf.exists(), ".rvf should be deleted after forget");
         assert!(!meta.exists(), ".meta.json should be deleted after forget");
+    }
+
+    /// v0.5.9 bug-fix: `learn forget` MUST clean every topic sidecar — not
+    /// just `.rvf` and `.meta.json`. A stale embedding cache causes mixed-
+    /// dimension corruption on re-ingest with a different embedder.
+    /// See CHANGELOG v0.5.9 for the full story.
+    #[test]
+    fn forget_cleans_all_sidecars() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        let topic = Topic::new("sidecar-test").unwrap();
+        // Pre-create every artifact type the topic could write.
+        let rvf = topic.rvf_path(&kb_root);
+        let meta = kb_root.join(format!("{}.meta.json", topic.as_str()));
+        let emb = kb_root.join(format!("{}.emb.bin", topic.as_str()));
+        let summary = kb_root.join(format!("{}.summary.md", topic.as_str()));
+        let manifest = topic.manifest_path(kb_root.as_ref());
+        let raw = topic.raw_dir(kb_root.as_ref());
+        std::fs::create_dir_all(manifest.parent().unwrap().as_std_path()).unwrap();
+        std::fs::create_dir_all(raw.as_std_path()).unwrap();
+        std::fs::write(raw.join("video.info.json").as_std_path(), b"{}").unwrap();
+        std::fs::write(raw.join("video.en.vtt").as_std_path(), b"WEBVTT\n").unwrap();
+        std::fs::write(rvf.as_std_path(), b"rvf-bytes").unwrap();
+        std::fs::write(meta.as_std_path(), b"{}").unwrap();
+        std::fs::write(emb.as_std_path(), b"\x00\x00\x00\x00").unwrap();
+        std::fs::write(summary.as_std_path(), b"# summary").unwrap();
+        std::fs::write(manifest.as_std_path(), b"{}").unwrap();
+
+        remove_topic_artifacts(&kb_root, &topic).unwrap();
+
+        assert!(!rvf.exists(), ".rvf should be gone");
+        assert!(!meta.exists(), ".meta.json should be gone");
+        assert!(!emb.exists(), ".emb.bin must be gone (mixed-dim guard)");
+        assert!(!summary.exists(), ".summary.md should be gone");
+        assert!(!manifest.exists(), "_meta/<topic>.json should be gone");
+        assert!(
+            !raw.exists(),
+            "_raw/<topic>/ should be gone (with contents)"
+        );
+    }
+
+    /// `learn forget <topic> --video <id>` currently prints "not yet wired"
+    /// rather than touching files. This pins that behaviour so a future video-
+    /// level rewrite (which MUST preserve other videos' files) can't silently
+    /// regress to topic-level deletion.
+    #[test]
+    fn forget_video_keeps_other_videos() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        let topic = Topic::new("multi-video").unwrap();
+        let rvf = topic.rvf_path(&kb_root);
+        let raw = topic.raw_dir(kb_root.as_ref());
+        std::fs::create_dir_all(raw.as_std_path()).unwrap();
+        std::fs::write(rvf.as_std_path(), b"rvf").unwrap();
+        std::fs::write(raw.join("video.info.json").as_std_path(), b"{}").unwrap();
+
+        // video=Some(...) takes the early-return "not yet wired" branch.
+        run_forget(
+            "multi-video".to_string(),
+            Some("kept_video".to_string()),
+            true,  // force
+            false, // dry_run
+            kb_root.clone(),
+        )
+        .unwrap();
+
+        assert!(rvf.exists(), ".rvf must survive video-level forget");
+        assert!(raw.exists(), "_raw must survive video-level forget");
+    }
+
+    /// `--force` must skip the interactive prompt entirely. If stdin were read
+    /// during the test it would block forever — the test passing proves no
+    /// prompt was issued.
+    #[test]
+    fn forget_force_skips_prompt() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        let topic = Topic::new("force-test").unwrap();
+        let rvf = topic.rvf_path(&kb_root);
+        std::fs::write(rvf.as_std_path(), b"rvf").unwrap();
+
+        run_forget(
+            "force-test".to_string(),
+            None,
+            true,  // force
+            false, // dry_run
+            kb_root.clone(),
+        )
+        .unwrap();
+
+        assert!(!rvf.exists(), ".rvf should be deleted under --force");
+    }
+
+    /// Forgetting an already-forgotten topic returns Ok(()) — useful for
+    /// scripts and the "fix-don't-ask" workflow.
+    #[test]
+    fn forget_idempotent() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        // First call on absent topic.
+        run_forget(
+            "ghost-topic".to_string(),
+            None,
+            true,
+            false,
+            kb_root.clone(),
+        )
+        .expect("first forget on absent topic must be Ok");
+        // Second call still Ok.
+        run_forget("ghost-topic".to_string(), None, true, false, kb_root)
+            .expect("second forget must be Ok (idempotent)");
+    }
+
+    /// `--dry-run` must list candidates but touch nothing.
+    #[test]
+    fn forget_dry_run_touches_nothing() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        let topic = Topic::new("dry-test").unwrap();
+        let rvf = topic.rvf_path(&kb_root);
+        let emb = kb_root.join(format!("{}.emb.bin", topic.as_str()));
+        std::fs::write(rvf.as_std_path(), b"rvf").unwrap();
+        std::fs::write(emb.as_std_path(), b"emb").unwrap();
+
+        run_forget(
+            "dry-test".to_string(),
+            None,
+            false, // force=false but dry_run takes precedence over prompt
+            true,  // dry_run
+            kb_root.clone(),
+        )
+        .unwrap();
+
+        assert!(rvf.exists(), ".rvf must survive --dry-run");
+        assert!(emb.exists(), ".emb.bin must survive --dry-run");
     }
 
     #[test]
