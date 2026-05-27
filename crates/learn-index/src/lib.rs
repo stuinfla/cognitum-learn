@@ -542,6 +542,17 @@ impl LearnIndex {
         self.chunks.get(&key).cloned()
     }
 
+    /// Look up a single chunk by its raw u64 id (FNV-1a hash of `chunk_id`).
+    ///
+    /// This is the lookup path used when retrieval IDs come from an external
+    /// store (e.g. the Cognitum Seed's `/store/query` endpoint) and we already
+    /// have the u64 in hand. Returns `None` when the id is not in the local
+    /// sidecar, which is expected when the Seed holds vectors from KBs that
+    /// were never ingested on this machine.
+    pub fn chunk_by_u64(&self, id: u64) -> Option<Chunk> {
+        self.chunks.get(&id.to_string()).cloned()
+    }
+
     /// Look up the stored dense embedding for a chunk by its `chunk_id` string.
     ///
     /// Returns `None` when the embedding was never persisted (e.g. the index

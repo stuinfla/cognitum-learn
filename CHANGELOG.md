@@ -4,6 +4,43 @@ All notable user-facing changes to `cognitum-learn` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.7] — 2026-05-26
+
+### Added
+
+- **`learn ask` can now route retrieval through a Cognitum One Seed.**
+  When `seed.address` is configured the new default behaviour POSTs the
+  query vector to the Seed's `POST /api/v1/store/query` endpoint (HTTPS
+  on port 8443, self-signed cert accepted) and translates the returned
+  ids back into local chunks. Two new flags:
+  - `--on-seed` — force-route through the Seed; fail fast if it is
+    unconfigured or unreachable. Use this when you want certainty that
+    the answer came from the shared device, not the Mac.
+  - `--no-seed` — force the local HNSW+BM25 path even when a Seed is
+    configured. Preserves the v0.5.6 behaviour exactly.
+
+  Default mode picks the Seed when `seed.address` is set and falls back
+  to local retrieval automatically if the Seed errors out. Output
+  format, exit codes, and the synthesizer surface are unchanged, so
+  existing MCP and CLI consumers see no contract change.
+
+  Bearer-token resolution order: `LEARN_SEED_TOKEN` env var →
+  `seed.token` in `config.json` → `~/.cognitum-seed.token` file.
+  Measured Seed-side query latency on a Pi Zero Seed at 384-dim with
+  ~200 vectors: ~60 ms. (`crates/learn-cli/src/seed_query.rs`,
+  `crates/learn-cli/src/main.rs`, `crates/learn-index/src/lib.rs`)
+
+- **New `LearnIndex::chunk_by_u64(id)`** for callers that already have
+  the FNV-1a u64 id in hand (e.g. ids returned by an external vector
+  store). Avoids round-tripping back through the chunk_id string.
+  (`crates/learn-index/src/lib.rs`)
+
+- **`scripts/smoke-test-seed-ask.sh`** — end-to-end probe that exits 0
+  when a Seed-backed `learn ask` returns a cited answer. Verifies
+  the binary is installed, the API key is set, the Seed is reachable,
+  and the store has vectors before paying for the embedder + Anthropic
+  call.
+
 ## [0.5.6] — 2026-05-26
 
 ### Fixed

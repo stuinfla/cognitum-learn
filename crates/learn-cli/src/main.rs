@@ -7,6 +7,7 @@ mod doctor;
 mod map;
 mod push;
 mod quiz;
+mod seed_query;
 mod setup;
 pub(crate) mod summary;
 mod ui;
@@ -86,11 +87,24 @@ enum Cmd {
         no_summary: bool,
     },
     /// Ask a question against a topic KB; answers come with citations.
+    ///
+    /// Retrieval backend selection:
+    /// - default: route through a configured Cognitum Seed when one is
+    ///   reachable AND its store has vectors; otherwise local HNSW.
+    /// - `--on-seed`: force-route through the Seed (error if unreachable).
+    /// - `--no-seed`: force local HNSW even when a Seed is configured.
     Ask {
         topic: String,
         question: String,
         #[arg(long, default_value = "deep")]
         depth: String,
+        /// Force the Seed-backed retrieval path. Fails fast if no Seed is
+        /// configured or it cannot be reached.
+        #[arg(long, conflicts_with = "no_seed")]
+        on_seed: bool,
+        /// Force the local HNSW retrieval path even when a Seed is configured.
+        #[arg(long)]
+        no_seed: bool,
     },
     /// Use the topic KB as the prior to *produce* something — a recipe, a
     /// strategy, a plan, code. Grounded in the corpus, fully cited.
@@ -409,7 +423,18 @@ async fn main() {
             topic,
             question,
             depth,
-        } => run_ask(topic, question, depth_to_k(&depth), kb_root).await,
+            on_seed,
+            no_seed,
+        } => {
+            run_ask(
+                topic,
+                question,
+                depth_to_k(&depth),
+                kb_root,
+                AskBackend::from_flags(on_seed, no_seed),
+            )
+            .await
+        }
         Cmd::Apply {
             topic,
             task,
@@ -487,6 +512,27 @@ async fn main() {
 
 // ── Command implementations ──────────────────────────────────────────────────
 
+/// Selects which retrieval backend `learn ask` uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AskBackend {
+    /// Auto-pick: Seed if configured + reachable + non-empty, else local.
+    Auto,
+    /// Hard-required Seed: error if Seed is unreachable or unconfigured.
+    SeedRequired,
+    /// Force local HNSW even when a Seed is configured.
+    LocalOnly,
+}
+
+impl AskBackend {
+    pub(crate) fn from_flags(on_seed: bool, no_seed: bool) -> Self {
+        match (on_seed, no_seed) {
+            (true, _) => Self::SeedRequired,
+            (_, true) => Self::LocalOnly,
+            _ => Self::Auto,
+        }
+    }
+}
+
 /// Exit codes for `learn ask`:
 /// - 0 = real cited answer returned
 /// - 1 = error (network, API, parse) — propagated via `Err(LearnError)`
@@ -497,6 +543,7 @@ async fn run_ask(
     question: String,
     k: usize,
     kb_root: Utf8PathBuf,
+    backend: AskBackend,
 ) -> learn_core::Result<()> {
     let topic = Topic::new(&topic_str)?;
 
@@ -509,23 +556,26 @@ async fn run_ask(
         process::exit(2);
     }
 
-    // 3. Build retriever with per-topic SONA adapter.
-    let embedder_path = ensure_model_ready()?;
-    let mut retriever =
-        learn_retrieve::Retriever::for_topic(index, &topic, embedder_path.as_ref())?;
+    // 3. Decide retrieval path.
+    let cfg = config::LearnConfig::load();
+    let use_seed = match backend {
+        AskBackend::SeedRequired => true,
+        AskBackend::LocalOnly => false,
+        AskBackend::Auto => cfg.seed_address().is_some(),
+    };
 
-    // 4. Build BM25 index.
-    retriever.refresh_bm25()?;
-
-    // 5. Search with depth-derived k.
-    let hits = retriever.search(&question, k).await?;
+    let hits = if use_seed {
+        retrieve_via_seed(&topic, &question, k, &index, &cfg, backend, &kb_root).await?
+    } else {
+        retrieve_locally(index, &topic, &question, k).await?
+    };
 
     if hits.is_empty() {
         eprintln!("(no relevant chunks found for this question in topic '{topic_str}')");
         process::exit(3);
     }
 
-    // 6. Synthesize.
+    // 4. Synthesize.
     let synth = learn_synth::select_synthesizer()?;
     let answer = synth.ask(topic.as_str(), &question, &hits).await?;
 
@@ -536,6 +586,90 @@ async fn run_ask(
 
     println!("{}", answer.text);
     Ok(())
+}
+
+/// Local HNSW + BM25 path — historic default.
+async fn retrieve_locally(
+    index: learn_index::LearnIndex,
+    topic: &Topic,
+    question: &str,
+    k: usize,
+) -> learn_core::Result<Vec<learn_core::Hit>> {
+    let embedder_path = ensure_model_ready()?;
+    let mut retriever = learn_retrieve::Retriever::for_topic(index, topic, embedder_path.as_ref())?;
+    retriever.refresh_bm25()?;
+    retriever.search(question, k).await
+}
+
+/// Seed-backed path: embed locally with the same per-topic SONA adapter,
+/// POST to the Seed, translate returned IDs back into local Chunks.
+///
+/// Falls back to local retrieval when `backend == AskBackend::Auto` and the
+/// Seed query fails (network error, no address) — preserves backward
+/// compatibility for users who set `seed.address` but later take the Seed
+/// offline. When `backend == AskBackend::SeedRequired` the error propagates.
+async fn retrieve_via_seed(
+    topic: &Topic,
+    question: &str,
+    k: usize,
+    index: &learn_index::LearnIndex,
+    cfg: &config::LearnConfig,
+    backend: AskBackend,
+    kb_root: &Utf8PathBuf,
+) -> learn_core::Result<Vec<learn_core::Hit>> {
+    let addr = match cfg.seed_address() {
+        Some(a) => a,
+        None => {
+            return Err(learn_core::LearnError::Retrieve(
+                "no Seed address configured — run `learn config set seed.address <ip>` \
+                 or omit `--on-seed`."
+                    .to_owned(),
+            ));
+        }
+    };
+
+    // Embed the question with the same per-topic adapter the local path would
+    // use — keeps the embedding space identical to the vectors on the Seed.
+    let embedder_path = ensure_model_ready()?;
+    let embed_cfg = learn_embed::EmbedConfig {
+        model_dir: embedder_path,
+        ..Default::default()
+    };
+    let mut embedder = learn_embed::Embedder::for_topic(topic, &embed_cfg)?;
+    let query_vec = embedder.embed_text(question)?;
+
+    let token = cfg.seed_token().or_else(read_token_file);
+
+    eprintln!("→ asking Cognitum Seed at {addr} (top_k={k})…");
+    let result = seed_query::query_seed(&addr, token.as_deref(), &query_vec, k, index).await;
+
+    match result {
+        Ok(hits) => Ok(hits),
+        Err(e) if backend == AskBackend::Auto => {
+            eprintln!(
+                "  Seed query failed ({e}); falling back to local retrieval. \
+                 Use `--on-seed` to force-fail instead."
+            );
+            // Re-open the index for the local path (the moved `index` ref was
+            // borrowed by the Seed call; LearnIndex::open_read is cheap).
+            let local_index = learn_index::LearnIndex::open_read(kb_root, topic.clone())?;
+            retrieve_locally(local_index, topic, question, k).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Read the bearer token from `~/.cognitum-seed.token` as a fallback when
+/// neither `LEARN_SEED_TOKEN` nor `seed.token` in config.json is set.
+fn read_token_file() -> Option<String> {
+    let path = dirs::home_dir()?.join(".cognitum-seed.token");
+    let contents = std::fs::read_to_string(path).ok()?;
+    let trimmed = contents.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
 }
 
 async fn run_apply(
