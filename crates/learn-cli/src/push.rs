@@ -51,6 +51,101 @@ pub(crate) fn rvf_path_for_topic(topic: &str, kb_root: &Utf8PathBuf) -> Utf8Path
     kb_root.join(format!("{topic}.rvf"))
 }
 
+/// Return `true` for the IPv4 link-local range 169.254.0.0/16 (RFC 3927,
+/// used by the Cognitum Seed's USB-gadget link).
+fn is_link_local_v4(addr: &str) -> bool {
+    addr.starts_with("169.254.")
+}
+
+/// Collapse multiple mDNS records that resolve to the same IP into one entry,
+/// preserving the original discovery order. Bug fix in v0.5.6 — the prior
+/// implementation prompted the user when the SAME Seed announced itself twice
+/// (a single USB-link Seed often advertises on multiple interfaces).
+///
+/// When mixed addresses remain, prefer LAN over the 169.254/16 USB-gadget
+/// link-local range so `learn push` (no flags) picks the routable address.
+///
+/// Exposed for unit testing.
+pub(crate) fn dedup_and_rank(addrs: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut unique: Vec<String> = Vec::with_capacity(addrs.len());
+    for a in addrs {
+        if seen.insert(a.clone()) {
+            unique.push(a);
+        }
+    }
+    // Stable sort: LAN addresses (false) sort before link-local (true).
+    unique.sort_by_key(|a| is_link_local_v4(a));
+    unique
+}
+
+/// Parse a "dimension mismatch ... expected N, got M" snippet out of the Seed
+/// response body. Returns `(expected, got)` when both numbers are recoverable.
+///
+/// Exposed for unit testing.
+pub(crate) fn parse_dim_mismatch(body: &str) -> Option<(usize, usize)> {
+    // Pattern: "expected N, got M" (Seed v0.x format).
+    let lower = body.to_ascii_lowercase();
+    let exp_idx = lower.find("expected ")?;
+    let after_exp = &body[exp_idx + "expected ".len()..];
+    let exp_end = after_exp
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(after_exp.len());
+    let expected: usize = after_exp[..exp_end].parse().ok()?;
+
+    let got_idx = lower.find("got ")?;
+    let after_got = &body[got_idx + "got ".len()..];
+    let got_end = after_got
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(after_got.len());
+    let got: usize = after_got[..got_end].parse().ok()?;
+    Some((expected, got))
+}
+
+/// Build a user-facing hint to append to a non-2xx Seed response.
+///
+/// Bug 3 fix in v0.5.6: when the Seed body contains "dimension mismatch"
+/// (the real symptom seen with a fresh Seed locked at 8-dim sensor data),
+/// point the user at the wipe-and-recreate migration guide instead of the
+/// vague "Reset the Seed store" hint.
+///
+/// Exposed for unit testing.
+pub(crate) fn build_error_hint(status: u16, body: &str, kb_dim: usize) -> String {
+    if body.to_ascii_lowercase().contains("dimension mismatch") {
+        if let Some((expected, got)) = parse_dim_mismatch(body) {
+            return format!(
+                "\n  hint: Seed store is locked at dim {expected} (likely sensor data) — \
+                 your KB is {got}-dim.\n  \
+                 To migrate, wipe the Seed store and let it re-initialise at the new dim. \
+                 See:\n    \
+                 https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
+            );
+        }
+        return format!(
+            "\n  hint: Seed store dimension does not match the KB's embedding dimension \
+             ({kb_dim}-dim).\n  \
+             To migrate, wipe the Seed store and let it re-initialise at the new dim. \
+             See:\n    \
+             https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
+        );
+    }
+    match status {
+        401 => "\n  hint: pair this client first via `POST /api/v1/pair/window` then \
+                `POST /api/v1/pair`, and pass the returned token with `--token <TOKEN>` \
+                (or set `LEARN_SEED_TOKEN`, or store it with \
+                `learn config set seed.token <TOKEN>`)."
+            .to_owned(),
+        409 => format!(
+            "\n  hint: Seed store dimension does not match the KB's embedding dimension \
+             ({kb_dim}-dim).\n  \
+             To migrate, wipe the Seed store and let it re-initialise at the new dim. \
+             See:\n    \
+             https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
+        ),
+        _ => String::new(),
+    }
+}
+
 /// Browse for `_cognitum._tcp.local.` with a 5-second timeout.
 async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<String> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
@@ -63,7 +158,7 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
         .map_err(|e| LearnError::Acquire(format!("mDNS browse failed: {e}")))?;
 
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let mut found: Vec<String> = Vec::new();
+    let mut raw: Vec<String> = Vec::new();
 
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -72,13 +167,18 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
         }
         match receiver.recv_timeout(remaining) {
             Ok(ServiceEvent::ServiceResolved(info)) => {
-                let addr = info
-                    .get_addresses_v4()
-                    .into_iter()
-                    .next()
-                    .map(|a| a.to_string())
-                    .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_owned());
-                found.push(addr);
+                // Push ALL v4 addresses the Seed advertised (it may have
+                // multiple interfaces), not just the first one. The dedup step
+                // below collapses duplicates by IP, and a LAN address — if
+                // present — will out-rank the 169.254/16 USB link-local one.
+                let mut had_v4 = false;
+                for ip in info.get_addresses_v4() {
+                    raw.push(ip.to_string());
+                    had_v4 = true;
+                }
+                if !had_v4 {
+                    raw.push(info.get_hostname().trim_end_matches('.').to_owned());
+                }
             }
             Ok(_) => {}
             Err(_) => break,
@@ -86,6 +186,8 @@ async fn discover_via_mdns(seed_index: Option<usize>) -> learn_core::Result<Stri
     }
 
     let _ = daemon.stop_browse("_cognitum._tcp.local.");
+
+    let mut found = dedup_and_rank(raw);
 
     match found.len() {
         0 => Err(LearnError::Acquire(
@@ -202,15 +304,7 @@ pub async fn run_push(
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            let hint = if status.as_u16() == 401 {
-                "\n  hint: pair this client first via `POST /api/v1/pair/window` then `POST /api/v1/pair`, \
-                 and pass the returned token with `--token <TOKEN>` (or set `LEARN_SEED_TOKEN`)."
-            } else if status.as_u16() == 409 {
-                "\n  hint: Seed store dimension does not match the KB's embedding dimension. \
-                 Reset the Seed store or restart the agent with `--dimension <N>`."
-            } else {
-                ""
-            };
+            let hint = build_error_hint(status.as_u16(), &body, dim);
             return Err(LearnError::Acquire(format!(
                 "Seed rejected batch {batch_no} (HTTP {status}): {body}{hint}"
             )));
@@ -310,6 +404,82 @@ mod tests {
                 "error should suggest learn ingest; got: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn dedup_and_rank_collapses_duplicate_ips() {
+        // Bug 2 reproducer: a single Seed announcing twice on the same IP.
+        let raw = vec!["169.254.42.1".to_owned(), "169.254.42.1".to_owned()];
+        assert_eq!(dedup_and_rank(raw), vec!["169.254.42.1".to_owned()]);
+    }
+
+    #[test]
+    fn dedup_and_rank_prefers_lan_over_link_local() {
+        let raw = vec!["169.254.42.1".to_owned(), "10.0.0.72".to_owned()];
+        let out = dedup_and_rank(raw);
+        assert_eq!(out, vec!["10.0.0.72".to_owned(), "169.254.42.1".to_owned()]);
+    }
+
+    #[test]
+    fn dedup_and_rank_keeps_distinct_lan_addresses() {
+        let raw = vec!["10.0.0.72".to_owned(), "192.168.1.5".to_owned()];
+        let out = dedup_and_rank(raw);
+        assert_eq!(out.len(), 2);
+        assert!(out.contains(&"10.0.0.72".to_owned()));
+        assert!(out.contains(&"192.168.1.5".to_owned()));
+    }
+
+    #[test]
+    fn dedup_and_rank_empty_input_returns_empty() {
+        assert!(dedup_and_rank(vec![]).is_empty());
+    }
+
+    #[test]
+    fn parse_dim_mismatch_extracts_expected_and_got() {
+        let body = "proof verification failed: dimension mismatch for vector 0: \
+                    expected 8, got 384";
+        assert_eq!(parse_dim_mismatch(body), Some((8, 384)));
+    }
+
+    #[test]
+    fn parse_dim_mismatch_returns_none_on_unrelated_body() {
+        assert_eq!(parse_dim_mismatch("internal server error"), None);
+    }
+
+    #[test]
+    fn build_error_hint_dim_mismatch_points_at_wiki() {
+        let body = "dimension mismatch for vector 0: expected 8, got 384";
+        let hint = build_error_hint(500, body, 384);
+        assert!(
+            hint.contains("seed-dimension-migration"),
+            "hint should point at the wiki page; got: {hint}"
+        );
+        assert!(
+            hint.contains("dim 8"),
+            "hint should name the expected dim; got: {hint}"
+        );
+        assert!(
+            hint.contains("384"),
+            "hint should name the KB dim; got: {hint}"
+        );
+    }
+
+    #[test]
+    fn build_error_hint_dim_mismatch_works_without_parseable_numbers() {
+        let hint = build_error_hint(500, "got a dimension mismatch somewhere", 384);
+        assert!(hint.contains("seed-dimension-migration"));
+        assert!(hint.contains("384-dim"));
+    }
+
+    #[test]
+    fn build_error_hint_401_mentions_config_token() {
+        let hint = build_error_hint(401, "Bearer token required", 384);
+        assert!(hint.contains("learn config set seed.token"));
+    }
+
+    #[test]
+    fn build_error_hint_unrelated_status_returns_empty() {
+        assert_eq!(build_error_hint(503, "service unavailable", 384), "");
     }
 
     #[test]

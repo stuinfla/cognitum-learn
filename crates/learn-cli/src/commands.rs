@@ -196,7 +196,9 @@ async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
     }
 
     println!("auto-pushing {topic} to Seed {addr}…");
-    let token = std::env::var("LEARN_SEED_TOKEN").ok();
+    // seed_token() reads LEARN_SEED_TOKEN env var first, then falls back to
+    // seed.token in config.json. Bug fix in v0.5.6 — previously only env was read.
+    let token = cfg.seed_token();
     if let Err(e) =
         crate::push::run_push(topic.to_owned(), Some(addr), None, token, kb_root.clone()).await
     {

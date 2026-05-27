@@ -460,7 +460,13 @@ async fn main() {
             seed,
             seed_index,
             token,
-        } => push::run_push(topic, seed, seed_index, token, kb_root).await,
+        } => {
+            // Fall back to seed.token from config.json when --token and
+            // LEARN_SEED_TOKEN are both unset. Bug fix in v0.5.6 — previously the
+            // CLI ignored the stored token and forced users to re-pass --token.
+            let effective_token = token.or_else(|| crate::config::LearnConfig::load().seed_token());
+            push::run_push(topic, seed, seed_index, effective_token, kb_root).await
+        }
         Cmd::Quiz {
             topic,
             count,
