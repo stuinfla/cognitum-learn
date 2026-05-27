@@ -4,6 +4,26 @@ All notable user-facing changes to `cognitum-learn` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.8] — 2026-05-26
+
+### Added
+
+- **Per-call synthesis overrides via env vars.** `AnthropicSynthesizer` now
+  reads two new optional env vars in addition to the existing
+  `LEARN_ANTHROPIC_MODEL`:
+  - `LEARN_ANTHROPIC_MAX_TOKENS` — caps the Anthropic `max_tokens` request
+    field (default `4096`, unchanged when unset).
+  - `LEARN_ANTHROPIC_SYSTEM_PROMPT` — replaces the built-in system prompt
+    for this call only (default behaviour preserved when unset).
+
+  Together these let voice surfaces with hard timeouts (e.g. Alexa's ~8 s
+  cap) trade depth for latency by spawning `learn ask` with
+  `LEARN_ANTHROPIC_MODEL=claude-haiku-4-5-…`,
+  `LEARN_ANTHROPIC_MAX_TOKENS=180`, and a spoken-natural system prompt —
+  without affecting the Mac CLI or Apple Siri paths, which leave the env
+  unset and continue to use Opus/Sonnet with the full prompt.
+  (`crates/learn-synth/src/lib.rs`)
+
 ## [0.5.7] — 2026-05-26
 
 ### Added

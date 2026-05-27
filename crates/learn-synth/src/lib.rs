@@ -6,7 +6,10 @@
 //!   (`POST /v1/messages`) using [`ASK_SYSTEM_PROMPT`] / [`ASK_USER_TEMPLATE`]
 //!   / [`APPLY_SYSTEM_PROMPT`] / [`APPLY_USER_TEMPLATE`]. Requires
 //!   `ANTHROPIC_API_KEY`. Model defaults to `claude-opus-4-7`; override with
-//!   `LEARN_ANTHROPIC_MODEL`. Retries 429/503 up to 3 times (1 s / 2 s / 4 s).
+//!   `LEARN_ANTHROPIC_MODEL`. Cap output length with `LEARN_ANTHROPIC_MAX_TOKENS`
+//!   (defaults to 4096). Replace the system prompt with
+//!   `LEARN_ANTHROPIC_SYSTEM_PROMPT` (useful for spoken-natural surfaces like
+//!   the Alexa fast-path). Retries 429/503 up to 3 times (1 s / 2 s / 4 s).
 //!
 //! - [`RuvllmSynthesizer`] — on-device inference via `ruvllm`. Active when
 //!   `LEARN_SYNTH_LOCAL=1` is set in the environment.
@@ -306,10 +309,20 @@ async fn call_anthropic(
     let model =
         std::env::var("LEARN_ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-opus-4-7".to_string());
 
+    // Optional per-call overrides — let callers (e.g. the voice-proxy Alexa
+    // fast-path) trade answer depth for latency. Defaults preserve the
+    // long-form Sonnet/Opus behaviour used by `learn ask` and Siri.
+    let max_tokens: u32 = std::env::var("LEARN_ANTHROPIC_MAX_TOKENS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4096);
+    let system_override = std::env::var("LEARN_ANTHROPIC_SYSTEM_PROMPT").ok();
+    let system_to_send: &str = system_override.as_deref().unwrap_or(system);
+
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 4096,
-        "system": system,
+        "max_tokens": max_tokens,
+        "system": system_to_send,
         "messages": [{"role": "user", "content": user_msg}],
     });
 
