@@ -4,6 +4,20 @@ All notable user-facing changes to `cognitum-learn` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.10] — 2026-05-26
+
+### Fixed
+
+- **`learn forget` now also cleans `<topic>.witness.json`.** A live-verification
+  follow-up to the v0.5.9 sidecar sweep caught a seventh orphan: the
+  `LearnIndex` witness-chain sidecar (`<kb_root>/<topic>.witness.json`) was
+  still left behind after `learn forget`. A subsequent re-ingest would resurrect
+  the stale witness hashes, breaking provenance verification for the newly
+  built index. `topic_forget_targets` now enumerates eight artifacts (was
+  seven), and a new regression test pins the witness sidecar to the cleanup
+  path. Purely additive — no other forget behaviour changes.
+  (`crates/learn-cli/src/commands.rs`)
+
 ## [0.5.9] — 2026-05-26
 
 ### Fixed

@@ -1224,11 +1224,12 @@ pub struct ForgetTarget {
 /// before deleting.
 pub fn topic_forget_targets(kb_root: &Utf8PathBuf, topic: &Topic) -> Vec<ForgetTarget> {
     let t = topic.as_str();
-    let candidates: [(&'static str, Utf8PathBuf, bool); 7] = [
+    let candidates: [(&'static str, Utf8PathBuf, bool); 8] = [
         ("rvf", topic.rvf_path(kb_root), false),
         ("meta", kb_root.join(format!("{t}.meta.json")), false),
         ("emb", kb_root.join(format!("{t}.emb.bin")), false),
         ("summary", kb_root.join(format!("{t}.summary.md")), false),
+        ("witness", kb_root.join(format!("{t}.witness.json")), false),
         ("manifest", topic.manifest_path(kb_root), false),
         (
             "graph",
@@ -2186,6 +2187,30 @@ mod tests {
         assert!(
             !raw.exists(),
             "_raw/<topic>/ should be gone (with contents)"
+        );
+    }
+
+    /// v0.5.10 bug-fix: `learn forget` must also clean the `<topic>.witness.json`
+    /// witness-chain sidecar written by `LearnIndex`. The v0.5.9 fix swept up six
+    /// sidecars but missed this one — a live-verification follow-up caught the
+    /// orphan on a real KB. Re-ingesting after a forget would resurrect the old
+    /// witness hashes, breaking provenance verification. See CHANGELOG v0.5.10.
+    #[test]
+    fn forget_cleans_witness_sidecar() {
+        let dir = TempDir::new().unwrap();
+        let kb_root = kb(&dir);
+        let topic = Topic::new("witness-test").unwrap();
+        let rvf = topic.rvf_path(&kb_root);
+        let witness = kb_root.join(format!("{}.witness.json", topic.as_str()));
+        std::fs::write(rvf.as_std_path(), b"rvf-bytes").unwrap();
+        std::fs::write(witness.as_std_path(), b"[]").unwrap();
+
+        remove_topic_artifacts(&kb_root, &topic).unwrap();
+
+        assert!(!rvf.exists(), ".rvf should be gone");
+        assert!(
+            !witness.exists(),
+            ".witness.json must be gone (provenance-chain guard)"
         );
     }
 
