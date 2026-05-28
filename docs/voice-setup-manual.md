@@ -27,8 +27,10 @@ lsof -nP -i :7879
 # If it shows 127.0.0.1:7879, set COG_VOICE_BIND=0.0.0.0 in the plist and reload.
 ```
 
-The proxy reads its bearer token from `~/.cognitum-learn/voice-proxy.token`
-(auto-generated on first install).
+The proxy reads its bearer token from `~/.cognitum-voice-proxy.token`
+(auto-generated on first install). Verify with `ls -la ~/.cognitum-voice-proxy.token`
+and `head -c 8 ~/.cognitum-voice-proxy.token` (the token is 43 chars; first 8
+should look like an alphanumeric prefix).
 
 ---
 
