@@ -58,6 +58,8 @@ T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/la
 brew install yt-dlp ffmpeg
 
 # 2. Bind your Seed (one time)
+# `cognitum-XXXX.local` is the mDNS name printed on the bottom of your Seed; replace XXXX with your unit's four-char ID.
+# This tells your Mac which Seed to push to and that every new KB should ship there automatically.
 learn config set seed.address cognitum-XXXX.local
 learn config set seed.auto_push true
 learn doctor
@@ -157,6 +159,19 @@ This is the new piece in v0.5.7+. After running the voice setup, you can ask you
 | **Google** (Nest Mini, Nest Hub) | *"Hey Google, run Cognitum check"* | A pre-defined voice Routine fires; speaker broadcasts the answer summary. Arbitrary slot Q&A on Nest hardware is not possible — Google retired that surface in 2023. See [voice setup](#voice-setup) for the three Routine patterns. |
 
 The voice surface is the same KB you built on your Mac. No second copy, no re-indexing.
+
+---
+
+## How is this different from ChatGPT / NotebookLM / Perplexity?
+
+| | What it knows | Where it runs | Voice anywhere in your home |
+|---|---|---|---|
+| **ChatGPT** | Whatever OpenAI trained it on, plus what you type into the box. Doesn't know *your* videos. | OpenAI cloud. Conversations may train future models. | No (only the phone app). |
+| **NotebookLM** | Documents you upload — but Google reads them. | Google cloud. | No. |
+| **Perplexity** | Web search results with citations. | Their cloud, every query. | No. |
+| **Cognitum Learn** | Only what you fed it. Cited to the second of the source video. | Your Mac (build) and your Cognitum Seed (host). Optional cloud call to Anthropic for the synthesis sentence, replaceable with on-device RuVLLM. | **Yes** — Siri, Alexa, and (with limits) Google. |
+
+Cognitum Learn isn't trying to be smarter than the cloud assistants on general knowledge. It's trying to be the *right* assistant for *your* knowledge — the things you watched, the documents your grandmother typed up, the lectures from your specific course — and to make that assistant reachable from the kitchen, the car, and the bedside table without uploading any of it.
 
 ---
 
@@ -288,7 +303,7 @@ Cognitum Learn is a three-tier system. Each tier has one job.
 
   Hardware: M-series Mac               Hardware: Pi Zero 2W                Hardware: iPhone / Echo / Nest
   Software: learn CLI + Whisper        Software: cognitum-agent +          Software: voice-proxy on Mac +
-  Storage: ~/Docs/KB/*.rvf             rvf-store + 114-tool MCP proxy      ecosystem skill / shortcut
+  Storage: ~/Docs/KB/*.rvf             rvf-store + 100+ tool MCP proxy      ecosystem skill / shortcut
 ```
 
 </details>
@@ -551,7 +566,7 @@ learn doctor                 # health check
 learn setup                                  # guided first-run wizard
 learn config set seed.address 192.168.x.x
 learn config set seed.auto_push true
-learn config get seed
+learn config get seed.address    # or seed.auto_push, seed.token — bare `seed` is not a valid key
 ```
 
 </details>
