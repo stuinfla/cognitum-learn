@@ -1,6 +1,6 @@
 # Cognitum Learn
 
-![Cognitum Learn — build, chat, and voice-query your knowledge from anywhere in your home](assets/voice-setup/wizard-hero.png)
+![Cognitum Learn — build, chat, and voice-query your knowledge from anywhere in your home](assets/voice-setup/wizard-hero.jpg)
 
 **Your Cognitum One Seed becomes a genius on what you care about — buildable on your Mac, chattable on your computer, voice-accessible everywhere in your home.**
 
@@ -58,7 +58,7 @@ T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/la
 brew install yt-dlp ffmpeg
 
 # 2. Bind your Seed (one time)
-learn config set seed.address cognitum-9842.local
+learn config set seed.address cognitum-XXXX.local
 learn config set seed.auto_push true
 learn doctor
 
@@ -135,7 +135,7 @@ learn import ~/Downloads/lectures/                 # local files (PDF, MP3, MP4,
 
 Once a KB is built, you can talk to it from your computer two ways: CLI or browser.
 
-![Mac dashboard — chat with your KB](assets/voice-setup/wizard-troubleshooting.png)
+![Mac dashboard — chat with your KB](assets/voice-setup/wizard-troubleshooting.jpg)
 
 ```bash
 learn ask   knife-sharpening "what angle for a 210mm gyuto?"
@@ -204,7 +204,7 @@ learn voice setup                # opens http://127.0.0.1:7878/voice-setup
 learn voice setup --ecosystem apple    # one ecosystem at a time
 ```
 
-The wizard does the work *and* shows you what's happening — embedded OAuth callbacks (no paste-this-code-back-into-the-terminal), live progress over SSE, dynamic QR codes for iPhone hand-off, and pre-recorded GIFs for the Alexa app and Google Home app screens. Architecture is in [`ADR-CL-004`](https://github.com/stuinfla/cognitum-home-integration/blob/main/docs/ADR-CL-004-visual-voice-setup-wizard.md); the seven UI assets already exist in `assets/voice-setup/`. Implementation lands across cognitum-learn v0.6.0a → v0.6.0d.
+The wizard does the work *and* shows you what's happening — embedded OAuth callbacks (no paste-this-code-back-into-the-terminal), live progress over SSE, dynamic QR codes for iPhone hand-off, and pre-recorded GIFs for the Alexa app and Google Home app screens. Architecture is in `ADR-CL-004` (design doc lives in the private cognitum-home-integration repo); the seven UI assets already exist in `assets/voice-setup/`. Implementation lands across cognitum-learn v0.6.0a → v0.6.0d.
 
 ### Capability matrix at a glance
 
@@ -229,21 +229,21 @@ GA status (today)   v0.5.7 ✓           v0.5.8 in flight     pre-defined Routin
 
 ### The three ecosystems at a glance
 
-![Apple voice flow](assets/voice-setup/apple-flow.png)
+![Apple voice flow](assets/voice-setup/apple-flow.jpg)
 
 **Apple** (≤4 min). A Shortcut on your iPhone calls your Mac's voice-proxy over HTTPS via a cloudflared tunnel; the proxy calls `learn ask` and returns the cited answer for Siri to speak. Works on iPhone, HomePod, CarPlay, Apple Watch. Free, LAN-friendly, no developer account needed. **GA in v0.5.7.**
 
-![Alexa voice flow](assets/voice-setup/alexa-flow.png)
+![Alexa voice flow](assets/voice-setup/alexa-flow.jpg)
 
 **Alexa** (≤5 min). A private Custom Skill on your Amazon developer account proxies *"Alexa, ask Cognitum about X"* to a Lambda function, which calls your Mac's voice-proxy via the same tunnel. Free under AWS free tier (1M requests/month). **In flight tonight** — the Haiku-fast-path Lambda handler is being isolated in a separate codepath so the slow-path full-Sonnet retrieval doesn't time out Alexa's 8-second response window.
 
-![Google voice flow](assets/voice-setup/google-flow.png)
+![Google voice flow](assets/voice-setup/google-flow.jpg)
 
 **Google** (≤6 min, optional). Three pre-defined Routines in the Google Home app: *"Hey Google, run Cognitum check"*, *"is the room safe"*, *"good morning Cognitum"*. Each fires a script in Home Assistant that broadcasts a TTS answer back through `notify.google_assistant_sdk`. Sensor fanout (presence, room state) works first-class; **arbitrary-slot Q&A on Nest hardware is not possible** — Google sunset Conversational Actions on June 13, 2023 with no replacement. Use Siri or Alexa for free-form questions.
 
 ### What the wizard automates (v0.6.0)
 
-![Voice setup progress states](assets/voice-setup/progress-celebration.png)
+![Voice setup progress states](assets/voice-setup/progress-celebration.jpg)
 
 | Phase 1.1 manual step | v0.6.0 wizard behaviour |
 |---|---|
@@ -295,7 +295,7 @@ Cognitum Learn is a three-tier system. Each tier has one job.
 
 **Why this split:** the heavy one-time work (ingest) needs CPU and the internet. The everyday work (answer questions) needs to be on the Seed where the knowledge actually lives. The voice surface needs to be wherever the user is — kitchen, car, bedroom — and so rides through the cloud-borne assistants that already have microphones in those places. Each tier does what its hardware is good at.
 
-The three-ecosystem architecture is documented in [ADR-CL-003](https://github.com/stuinfla/cognitum-home-integration/blob/main/docs/ADR-CL-003-three-ecosystem-connectivity.md). Sensor fanout (the 21 RuView entities — presence, temperature, etc.) rides the same path through Home Assistant; voice Q&A is the simpler lane that bypasses HA entirely.
+The three-ecosystem architecture is documented in `ADR-CL-003` (private cognitum-home-integration repo). Sensor fanout (the 21 RuView entities — presence, temperature, etc.) rides the same path through Home Assistant; voice Q&A is the simpler lane that bypasses HA entirely.
 
 ### Ingest pipeline
 
@@ -464,7 +464,7 @@ Every query teaches the Seed which chunks were useful and which weren't. Over ti
 
 ### Mac and Seed
 
-**"My Seed isn't reachable" / `learn doctor` red on `seed.reachable`.** Confirm the address with `ping cognitum-9842.local` or use the raw IP printed on the Seed. Some routers drop `.local` names; fall back to `learn config set seed.address 192.168.x.x`. Mac and Seed must be on the same LAN. The auth token, if your Seed requires one, lives at `~/.config/cognitum/seed.token` and is read automatically.
+**"My Seed isn't reachable" / `learn doctor` red on `seed.reachable`.** Confirm the address with `ping cognitum-XXXX.local` or use the raw IP printed on the Seed. Some routers drop `.local` names; fall back to `learn config set seed.address 192.168.x.x`. Mac and Seed must be on the same LAN. The auth token, if your Seed requires one, lives at `~/.config/cognitum/seed.token` and is read automatically.
 
 **"Dimension mismatch" when pushing to the Seed.** Cognitum Learn embeds at 384 dims (BGE-small). A fresh Seed often shows `dimension: 8` because its sensor pipeline wrote first. The Seed is *not* hardware-limited to any particular dimension — fix it by editing the agent's `--dimension` flag and wiping the old store. Full procedure in [`docs/voice-setup-manual.md`](docs/voice-setup-manual.md) under "Dimension fix." Never chase this as a firmware bug.
 
@@ -476,7 +476,7 @@ Every query teaches the Seed which chunks were useful and which weren't. Over ti
 
 **Alexa skill returns "Cognitum is having trouble."** Almost always a Lambda cold-start or timeout. The v0.5.8 release adds the Haiku-fast-path that returns within Alexa's 8-second window for short queries; long queries still fall back to a "let me think about that for a moment" response. Watch the Lambda logs (`aws logs tail /aws/lambda/ask-cognitum --follow`) for the actual error.
 
-**Google Routine fires but speaker stays silent.** The TTS broadcast hop (`notify.google_assistant_sdk`) needs your `homegraph` service account credentials at `~/.homeassistant/google_service_account.json`. If the file is missing, only the scene fires — there's no spoken response. Re-run the Google branch of the wizard, or drop the JSON manually per [`scaffolding/voice-proxy/google/service-account-setup.md`](https://github.com/stuinfla/cognitum-home-integration/blob/main/scaffolding/voice-proxy/google/service-account-setup.md).
+**Google Routine fires but speaker stays silent.** The TTS broadcast hop (`notify.google_assistant_sdk`) needs your `homegraph` service account credentials at `~/.homeassistant/google_service_account.json`. If the file is missing, only the scene fires — there's no spoken response. Re-run the Google branch of the wizard, or drop the JSON manually at `~/.homeassistant/google_service_account.json` (generate from Google Cloud Console → Home Graph API service account).
 
 **cloudflared tunnel URL changes every reboot.** Quick tunnels (free) get a new `*.trycloudflare.com` on each invocation. Amazon won't accept that — its OAuth redirect URI is fixed per skill. Fix: either keep the tunnel up (the v0.6.0 wizard supervises it via launchd), or migrate to a Cloudflare account with a named tunnel (free, requires domain ownership).
 
@@ -497,7 +497,7 @@ This README reflects what is shipped tonight and what is queued. Cognitum Learn 
 | **Apple voice** (`Hey Siri, ask Cognitum`) | **GA, v0.5.7+** | Voice-proxy LaunchAgent + Shortcut + cloudflared tunnel; verified end-to-end on Stuart's stack. |
 | **Alexa voice** (`Alexa, ask Cognitum`) | **In flight tonight** | Haiku-fast-path Lambda being isolated in v0.5.8 to fit Alexa's 8-second window; full GA expected v0.5.9. |
 | **Google voice** (Routines only) | **Scripted-only** | Three pre-defined Routines work today; arbitrary-slot Q&A on Nest hardware is *not possible* (ecosystem constraint — Google retired Conversational Actions in 2023). |
-| **v0.6.0 wizard** (`learn voice setup`) | **Scoped + designed** | [ADR-CL-004](https://github.com/stuinfla/cognitum-home-integration/blob/main/docs/ADR-CL-004-visual-voice-setup-wizard.md) ratified; 7 visual assets generated; implementation lands across Phase 2.0a → 2.0d (5–7 days). Until then, voice setup is manual. |
+| **v0.6.0 wizard** (`learn voice setup`) | **Scoped + designed** | `ADR-CL-004` ratified (private design doc); 7 visual assets generated; implementation lands across Phase 2.0a → 2.0d (5–7 days). Until then, voice setup is manual. |
 | **Linux ARM64 + Intel Mac voice setup** | **Mac-only today** | The voice-proxy assumes a Mac LaunchAgent. Pi Zero / Linux desktop hosting is on the roadmap, not shipped. |
 
 ---
@@ -549,7 +549,7 @@ learn doctor                 # health check
 
 ```bash
 learn setup                                  # guided first-run wizard
-learn config set seed.address 192.168.1.42
+learn config set seed.address 192.168.x.x
 learn config set seed.auto_push true
 learn config get seed
 ```
@@ -611,4 +611,4 @@ Contributions welcome. Open an issue before sending a PR larger than ~50 lines s
 
 ---
 
-*Built with [RuVector](https://github.com/ruvnet/ruvector) · PolyForm Noncommercial 1.0.0 · [Releases](https://github.com/stuinfla/cognitum-learn/releases) · [Architecture ADRs](https://github.com/stuinfla/cognitum-home-integration/tree/main/docs)*
+*Built with [RuVector](https://github.com/ruvnet/ruvector) · PolyForm Noncommercial 1.0.0 · [Releases](https://github.com/stuinfla/cognitum-learn/releases)*
