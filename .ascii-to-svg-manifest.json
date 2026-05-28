@@ -1,27 +1,77 @@
 {
   "version": "1.0.0",
-  "lastSync": "2026-05-05T13:32:00Z",
+  "lastSync": "2026-05-28T14:00:00Z",
   "diagrams": [
     {
-      "id": "pipeline",
+      "id": "top-level-invocation",
       "sourceFile": "README.md",
-      "svgFile": "assets/pipeline.svg",
-      "description": "Cognitum Learn ingest pipeline (8-stage vertical flow)",
-      "lastConverted": "2026-05-05T13:32:00Z"
+      "svgFile": "assets/diagrams/top-level-invocation.svg",
+      "description": "At-a-glance: YOU → BUILD/CHAT/VOICE → Cognitum One Seed",
+      "lastConverted": "2026-05-28T14:00:00Z"
     },
     {
-      "id": "seed-workflow",
+      "id": "quickstart",
       "sourceFile": "README.md",
-      "svgFile": "assets/seed-workflow.svg",
-      "description": "Cognitum One Seed workflow (Mac → Transfer → Seed)",
-      "lastConverted": "2026-05-05T13:32:00Z"
+      "svgFile": "assets/quickstart.svg",
+      "description": "Five-step quickstart visualised (install → bind → build → chat → voice)",
+      "lastConverted": "2026-05-28T14:00:00Z"
     },
     {
       "id": "three-modes",
       "sourceFile": "README.md",
       "svgFile": "assets/three-modes.svg",
-      "description": "Three ways to use Cognitum Learn (Claude Skill / CLI / MCP Server)",
-      "lastConverted": "2026-05-05T13:32:00Z"
+      "description": "Three modes — Mac builds, Seed hosts, voice surfaces anywhere",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "capability-matrix",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/capability-matrix.svg",
+      "description": "Voice ecosystem capability matrix — Apple vs Alexa vs Google side-by-side",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "seed-workflow",
+      "sourceFile": "README.md",
+      "svgFile": "assets/seed-workflow.svg",
+      "description": "Mac (workshop) → Seed (house) → Voice surface (home) three-tier split",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "ingest-pipeline",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/ingest-pipeline.svg",
+      "description": "Ingest pipeline — eight stages from URL to tamper-evident .rvf",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "query-path",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/query-path.svg",
+      "description": "Query path — six stages from question to cited answer",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "storage-model",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/storage-model.svg",
+      "description": "Storage layout — Mac mirrors Seed; one .rvf per topic plus side-cars",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "architecture",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/architecture.svg",
+      "description": "17 crates, one binary — CLI / ingestion / retrieval / synth / chat / serve",
+      "lastConverted": "2026-05-28T14:00:00Z"
+    },
+    {
+      "id": "learning-flywheel",
+      "sourceFile": "README.md",
+      "svgFile": "assets/diagrams/learning-flywheel.svg",
+      "description": "Learning flywheel — query → judge → distill → adapt → better answer",
+      "lastConverted": "2026-05-28T14:00:00Z"
     }
-  ]
+  ],
+  "notes": "asciiHash fields intentionally omitted; the ascii-svg-auto-sync hook will populate them on next Edit/Write to README.md"
 }

@@ -4,6 +4,42 @@
 
 **Your Cognitum One Seed becomes a genius on what you care about — buildable on your Mac, chattable on your computer, voice-accessible everywhere in your home.**
 
+![How Cognitum Learn fits together at a glance](assets/diagrams/top-level-invocation.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
+
+```
+              ┌─────────────────────┐
+              │  YOU — your topic   │
+              │ "sous vide cooking" │
+              └──────────┬──────────┘
+                         │
+   ┌─────────────────────┼─────────────────────┐
+   │                     │                     │
+   ▼                     ▼                     ▼
+ BUILD                 CHAT                  VOICE
+(your Mac)         (Mac CLI + UI)       (anywhere at home)
+
+learn study       learn ask              "Hey Siri,
+learn ingest      learn chat              ask Cognitum…"
+learn import      learn ui               "Alexa,
+                                          ask Cognitum…"
+   │                     │                     │
+   └─────────────────────┼─────────────────────┘
+                         ▼
+              ┌──────────────────────┐
+              │ COGNITUM ONE SEED    │
+              │ ~/Docs/KB/*.rvf      │  ← also on Mac
+              │ /var/lib/cognitum/   │  ← on Seed
+              │                      │
+              │ One file per topic.  │
+              │ You own both copies. │
+              └──────────────────────┘
+```
+
+</details>
+
 This is not just a knowledge-base tool. It is three things that work together:
 
 - **Build** — your Mac downloads videos, transcribes audio, and pushes a searchable expert to your Seed.
@@ -38,6 +74,25 @@ learn ui
 learn voice setup     # opens a browser wizard, walks you through Apple + Alexa + Google
 ```
 
+![The five-step quickstart visualised](assets/quickstart.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
+
+```
+  1. INSTALL          2. BIND SEED        3. BUILD KB        4. CHAT             5. VOICE
+  ───────────         ────────────        ──────────         ──────              ──────
+  curl … | tar xz     learn config set    learn study        learn chat          learn voice
+  install.sh          seed.address …      "sous vide"        sous-vide           setup
+  brew install …      learn doctor                           ─or─                ↓
+                                                             learn ui            Hey Siri, ask
+                                                                                 Cognitum…
+  one-time Mac        one-time per        per-topic          everyday use        once per
+  install             Seed pairing        ingest                                 ecosystem
+```
+
+</details>
+
 After step 5, *"Hey Siri, ask Cognitum what temperature for medium-rare steak"* speaks the answer back to you from any iPhone, HomePod, Echo, or (with limits) Google Nest in your home.
 
 > Your knowledge base is one file: `~/Docs/KB/sous-vide.rvf`. The Seed gets an identical copy at `/var/lib/cognitum/rvf-store/`. You own both.
@@ -50,7 +105,10 @@ After step 5, *"Hey Siri, ask Cognitum what temperature for medium-rare steak"* 
 
 Mac builds. Seed hosts. Voice anywhere.
 
-<!-- DIAGRAM_REGEN: assets/voice-setup/wizard-hero.png — refresh when ecosystem layout changes. -->
+![Three modes — Mac builds the KB, Seed hosts it, voice surfaces it across your home](assets/three-modes.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
 
 ```
    MAC (the workshop)              COGNITUM SEED (the house)           YOUR HOME (the voice)
@@ -61,7 +119,7 @@ Mac builds. Seed hosts. Voice anywhere.
    learn ui (dashboard)            with cited timestamps
 ```
 
-<!-- DIAGRAM_REGEN: assets/three-modes-flow.svg — render the ASCII above. -->
+</details>
 
 ### 1. Build (on your Mac)
 
@@ -148,6 +206,27 @@ learn voice setup --ecosystem apple    # one ecosystem at a time
 
 The wizard does the work *and* shows you what's happening — embedded OAuth callbacks (no paste-this-code-back-into-the-terminal), live progress over SSE, dynamic QR codes for iPhone hand-off, and pre-recorded GIFs for the Alexa app and Google Home app screens. Architecture is in [`ADR-CL-004`](https://github.com/stuinfla/cognitum-home-integration/blob/main/docs/ADR-CL-004-visual-voice-setup-wizard.md); the seven UI assets already exist in `assets/voice-setup/`. Implementation lands across cognitum-learn v0.6.0a → v0.6.0d.
 
+### Capability matrix at a glance
+
+![How each ecosystem talks to your Seed — Apple, Alexa, Google compared side-by-side](assets/diagrams/capability-matrix.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
+
+```
+                    APPLE              ALEXA                GOOGLE (Nest)
+                    ─────              ─────                ─────────────
+Free-form Q&A       ✓ Siri Shortcut    ✓ Custom Skill       ✗ ecosystem-limited
+Setup time          ≤4 min             ≤5 min               ≤6 min (Routines only)
+Cloud cost          $0                 AWS free tier        $0
+Privacy footprint   tunnel only        tunnel + Lambda      tunnel + HA notify
+Hardware reach      iPhone/HomePod/    Echo Dot/Show/       Nest Mini/Hub +
+                    CarPlay/Watch      Auto                 HA-fanned speakers
+GA status (today)   v0.5.7 ✓           v0.5.8 in flight     pre-defined Routines
+```
+
+</details>
+
 ### The three ecosystems at a glance
 
 ![Apple voice flow](assets/voice-setup/apple-flow.png)
@@ -186,12 +265,16 @@ The wizard does the work *and* shows you what's happening — embedded OAuth cal
 
 ---
 
-## How it works (collapsed)
+## How it works
 
-<details>
-<summary><strong>The Mac–Seed–voice split</strong></summary>
+### The Mac–Seed–voice split
 
 Cognitum Learn is a three-tier system. Each tier has one job.
+
+![Cognitum Seed workflow — Mac is the workshop, Seed is the house, voice is the everyday surface](assets/seed-workflow.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
 
 ```
   YOUR MAC (the workshop)              YOUR SEED (the house)               YOUR HOME (the voice)
@@ -208,18 +291,20 @@ Cognitum Learn is a three-tier system. Each tier has one job.
   Storage: ~/Docs/KB/*.rvf             rvf-store + 114-tool MCP proxy      ecosystem skill / shortcut
 ```
 
-<!-- DIAGRAM_REGEN: assets/three-tier-flow.svg — render the ASCII above. -->
+</details>
 
 **Why this split:** the heavy one-time work (ingest) needs CPU and the internet. The everyday work (answer questions) needs to be on the Seed where the knowledge actually lives. The voice surface needs to be wherever the user is — kitchen, car, bedroom — and so rides through the cloud-borne assistants that already have microphones in those places. Each tier does what its hardware is good at.
 
 The three-ecosystem architecture is documented in [ADR-CL-003](https://github.com/stuinfla/cognitum-home-integration/blob/main/docs/ADR-CL-003-three-ecosystem-connectivity.md). Sensor fanout (the 21 RuView entities — presence, temperature, etc.) rides the same path through Home Assistant; voice Q&A is the simpler lane that bypasses HA entirely.
 
-</details>
+### Ingest pipeline
+
+URL or local file in, searchable expert out. Eight stages, all on your Mac, all on-device except the final auto-summary.
+
+![Ingest pipeline — eight stages from URL to a tamper-evident .rvf knowledge file](assets/diagrams/ingest-pipeline.svg)
 
 <details>
-<summary><strong>Ingest pipeline</strong></summary>
-
-![Ingest pipeline](assets/diagrams/ingest-pipeline.svg)
+<summary>ASCII version (for AI/accessibility)</summary>
 
 ```
 Source URL or path
@@ -243,14 +328,16 @@ Source URL or path
   ~/Docs/KB/<topic>.rvf       ←auto-push→     /var/lib/cognitum/rvf-store/<topic>.rvf
 ```
 
-<!-- DIAGRAM_REGEN: assets/diagrams/ingest-pipeline.svg — keep current asset. -->
-
 </details>
 
-<details>
-<summary><strong>Query path (for both Mac chat and voice)</strong></summary>
+### Query path
 
-![Query path](assets/diagrams/query-path.svg)
+The same retrieval-and-synthesis pipeline answers a CLI question, a dashboard chat turn, and a Siri request — only the input shape and output shape change.
+
+![Query path — six stages from a question to a cited answer or spoken response](assets/diagrams/query-path.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
 
 ```
 Question (typed or spoken)
@@ -268,12 +355,16 @@ Question (typed or spoken)
   Cited answer with [Title @ MM:SS](url&t=Xs) links (or spoken summary for voice)
 ```
 
-<!-- DIAGRAM_REGEN: assets/diagrams/query-path.svg — keep current asset. -->
-
 </details>
 
+### Storage layout
+
+One file per topic. You can copy, back up, or delete a topic by touching one file. Per-topic isolation is total.
+
+![Storage layout — Mac mirrors Seed; one .rvf per topic plus per-topic side-cars](assets/diagrams/storage-model.svg)
+
 <details>
-<summary><strong>Storage layout</strong></summary>
+<summary>ASCII version (for AI/accessibility)</summary>
 
 ```
 ~/Docs/KB/                          ← on your Mac
@@ -294,19 +385,76 @@ Question (typed or spoken)
 
 </details>
 
-<details>
-<summary><strong>Architecture: 17 crates, one binary</strong></summary>
+### Architecture: 17 crates, one binary
 
-| Layer | Crate | Responsibility |
-|---|---|---|
-| CLI | `learn-cli` | 26 subcommands, routing, voice setup entry point |
-| Ingestion | `learn-acquire`, `learn-asr`, `learn-frames`, `learn-chunk`, `learn-embed`, `learn-index`, `learn-graph` | URL → `.rvf` pipeline |
-| Retrieval | `learn-retrieve` | Hybrid BM25+dense, rerank, MMR |
-| Synthesis | `learn-synth` | Cited answers, in-tree AIMDS scanner |
-| Chat | `learn-chat` | Multi-turn REPL, JSONL sessions |
-| Serve | `learn-serve` | Axum HTTP + MCP server + (v0.6.0) voice-setup wizard |
-| Voice (v0.5.7+) | `learn-voice-proxy` (separate scaffolding) | HTTPS endpoint for Apple/Alexa/Google to hit |
-| Contracts | `learn-core` | Shared types, errors, topic slug |
+![Architecture — 17 crates split across CLI, ingestion, retrieval, synthesis, chat, serve, voice](assets/diagrams/architecture.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
+
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │                         learn (CLI binary)                      │
+   │                            learn-cli                            │
+   │                  26 subcommands, voice setup entry              │
+   └────────┬──────────┬──────────┬──────────┬──────────┬─────────┘
+            │          │          │          │          │
+            ▼          ▼          ▼          ▼          ▼
+       INGESTION   RETRIEVE    SYNTH      CHAT     SERVE/VOICE
+       acquire     retrieve    synth      chat     serve
+       asr         (BM25+      (cited     (REPL,   (Axum + MCP
+       frames       dense,     answers,    JSONL   + v0.6.0
+       chunk        rerank,    AIMDS       sessions) wizard)
+       embed        MMR)       in/out)              voice-proxy
+       index                                        (scaffolding)
+       graph
+            └──────────┴──────────┴──────────┴──────────┘
+                                  │
+                                  ▼
+                            learn-core
+                       (shared types, errors,
+                          topic slug logic)
+```
+
+</details>
+
+### How knowledge improves over time
+
+Every query teaches the Seed which chunks were useful and which weren't. Over time, the SONA per-topic adapter quietly retrains and your KB gets better at answering your kind of question without you ever leaving the loop.
+
+![Learning flywheel — query → judge → distill → adapt → better answer next time](assets/diagrams/learning-flywheel.svg)
+
+<details>
+<summary>ASCII version (for AI/accessibility)</summary>
+
+```
+            ┌──────────────────────┐
+            │ 1. You ask a         │
+            │    question          │
+            └──────────┬───────────┘
+                       ▼
+            ┌──────────────────────┐
+   ┌────────┤ 2. Seed retrieves +  │
+   │        │    cites an answer   │
+   │        └──────────┬───────────┘
+   │                   ▼
+   │        ┌──────────────────────┐
+   │        │ 3. You read it,      │
+   │        │    click a citation, │
+   │        │    or ask follow-up  │
+   │        └──────────┬───────────┘
+   │                   ▼
+   │        ┌──────────────────────┐
+   │        │ 4. SONA adapter      │
+   │        │    learns which      │
+   │        │    chunks won        │
+   │        └──────────┬───────────┘
+   │                   ▼
+   │        ┌──────────────────────┐
+   └───────►│ 5. Next answer is    │
+            │    a little sharper  │
+            └──────────────────────┘
+```
 
 </details>
 
@@ -338,7 +486,7 @@ Question (typed or spoken)
 
 ---
 
-## Honest current state (v0.5.8, 2026-05-26)
+## Honest current state (v0.5.10, 2026-05-28)
 
 This README reflects what is shipped tonight and what is queued. Cognitum Learn is moving fast and we'd rather tell you what's real than make promises.
 
