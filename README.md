@@ -70,8 +70,8 @@ learn chat sous-vide
 # OR open the web dashboard
 learn ui
 
-# 5. Set up voice (v0.6.0 wizard — see "Voice setup" below)
-learn voice setup     # opens a browser wizard, walks you through Apple + Alexa + Google
+# 5. Set up voice — TODAY: follow docs/voice-setup-manual.md (Apple/Alexa/Google CLI procedure, ~30 min)
+#         COMING in v0.6.0: a single `learn voice setup` browser wizard replaces the 30-step manual flow
 ```
 
 ![The five-step quickstart visualised](assets/quickstart.svg)
@@ -396,7 +396,7 @@ One file per topic. You can copy, back up, or delete a topic by touching one fil
    ┌─────────────────────────────────────────────────────────────────┐
    │                         learn (CLI binary)                      │
    │                            learn-cli                            │
-   │                  26 subcommands, voice setup entry              │
+   │                  25 subcommands, voice setup entry (v0.6.0)              │
    └────────┬──────────┬──────────┬──────────┬──────────┬─────────┘
             │          │          │          │          │
             ▼          ▼          ▼          ▼          ▼
@@ -503,7 +503,7 @@ This README reflects what is shipped tonight and what is queued. Cognitum Learn 
 ---
 
 <details>
-<summary><strong>📦 All 26 commands</strong></summary>
+<summary><strong>📦 All 25 commands</strong></summary>
 
 ### Discovery + ingestion
 
@@ -537,7 +537,7 @@ learn summarize <topic>      # key takeaways
 learn push    <topic>        # push KB to your Cognitum One Seed
 learn serve   <topic>        # MCP server for Claude Code
 learn ui                     # local web dashboard
-learn voice setup            # (v0.6.0) interactive voice-wiring wizard
+# learn voice setup is the v0.6.0 wizard — not in this release; see docs/voice-setup-manual.md
 learn watch   <topic>        # monitor a YouTube channel
 learn eval    <topic>        # regression Q&A
 learn forget  <topic> <video-id>
@@ -565,7 +565,7 @@ learn config get seed
 | `LEARN_SYNTH_LOCAL` | `1` → use local RuVLLM instead of Anthropic. Fully on-device. | `0` |
 | `LEARN_AIMDS_REQUIRED` | `1` → fail closed on any `Blocked` AIMDS verdict | `0` |
 | `LEARN_KB_ROOT` | Where `.rvf` files live | `~/Docs/KB` |
-| `LEARN_MODEL_CACHE` | Where Whisper + BGE models cache | `~/.cache/learn-rs/models` |
+| `LEARN_EMBED_MODEL_DIR` | Where Whisper + BGE models cache | `~/.cache/learn-rs/models` |
 | `RUST_LOG` | Tracing filter (`info`, `debug`, `learn_synth=trace`) | `warn` |
 
 **Seed config** is persisted via `learn config set seed.*`. Relevant keys: `seed.address`, `seed.token`, `seed.auto_push`.
@@ -595,7 +595,7 @@ cargo test --workspace
 cargo build --release --workspace
 ```
 
-CI requires all four green before merge. 311+ unit + integration tests.
+CI requires all four green before merge. 384 unit + integration tests (as of v0.5.10).
 
 </details>
 
