@@ -2,7 +2,9 @@
 
 ![Cognitum Learn — build, chat, and voice-query your knowledge from anywhere in your home](assets/voice-setup/wizard-hero.jpg)
 
-**Your Cognitum One Seed becomes a genius on what you care about — buildable on your Mac, chattable on your computer, voice-accessible everywhere in your home.**
+**You pick a subject. Cognitum watches the videos and reads the documents for you, then answers your questions — by text on your Mac or out loud through Siri, Alexa, or Google. Everything stays on devices you own.**
+
+*(You don't need the Cognitum Seed hardware to try it — your Mac can do everything by itself. The Seed just lets the answers follow you around your home.)*
 
 ![How Cognitum Learn fits together at a glance](assets/diagrams/top-level-invocation.svg)
 
@@ -22,9 +24,9 @@
 (your Mac)         (Mac CLI + UI)       (anywhere at home)
 
 learn study       learn ask              "Hey Siri,
-learn ingest      learn chat              ask Cognitum…"
-learn import      learn ui               "Alexa,
-                                          ask Cognitum…"
+learn ingest      learn chat              Cognitum…"
+learn import      learn ui               "Alexa, ask
+                                          Cognitum…"
    │                     │                     │
    └─────────────────────┼─────────────────────┘
                          ▼
@@ -50,16 +52,17 @@ No cloud account. No subscription. Your knowledge lives on your Seed, on your ne
 
 ---
 
-## Quickstart — five steps from zero to "Hey Siri, ask Cognitum"
+## Quickstart — five steps from zero to "Hey Siri, Cognitum"
 
 ```bash
 # 1. Install on your Mac (prebuilt binary, no developer tools required)
 T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz | tar xz -C "$T" && "$T/learn-aarch64-apple-darwin/install.sh"
 brew install yt-dlp ffmpeg
 
-# 2. Bind your Seed (one time)
+# 2. Bind your Seed (one time — SKIP if you don't have a Seed yet)
+#    No Seed? Cognitum Learn still builds, chats, and quizzes locally on your Mac.
+#    You only need a Seed for voice from around the house and cross-device sharing.
 # `cognitum-XXXX.local` is the mDNS name printed on the bottom of your Seed; replace XXXX with your unit's four-char ID.
-# This tells your Mac which Seed to push to and that every new KB should ship there automatically.
 learn config set seed.address cognitum-XXXX.local
 learn config set seed.auto_push true
 learn doctor
@@ -72,8 +75,8 @@ learn chat sous-vide
 # OR open the web dashboard
 learn ui
 
-# 5. Set up voice — TODAY: follow docs/voice-setup-manual.md (Apple/Alexa/Google CLI procedure, ~30 min)
-#         COMING in v0.6.0: a single `learn voice setup` browser wizard replaces the 30-step manual flow
+# 5. Set up voice — follow docs/voice-setup-manual.md (Apple/Alexa/Google CLI, ~30 min one-time)
+#    Apple Siri works today. Alexa is in flight in v0.5.8. A one-command browser wizard ships in v0.6.0.
 ```
 
 ![The five-step quickstart visualised](assets/quickstart.svg)
@@ -87,7 +90,7 @@ learn ui
   curl … | tar xz     learn config set    learn study        learn chat          learn voice
   install.sh          seed.address …      "sous vide"        sous-vide           setup
   brew install …      learn doctor                           ─or─                ↓
-                                                             learn ui            Hey Siri, ask
+                                                             learn ui            Hey Siri,
                                                                                  Cognitum…
   one-time Mac        one-time per        per-topic          everyday use        once per
   install             Seed pairing        ingest                                 ecosystem
@@ -95,11 +98,38 @@ learn ui
 
 </details>
 
-After step 5, *"Hey Siri, ask Cognitum what temperature for medium-rare steak"* speaks the answer back to you from any iPhone, HomePod, Echo, or (with limits) Google Nest in your home.
+After step 5, *"Hey Siri, Cognitum what temperature for medium-rare steak"* speaks the answer back to you from any iPhone, HomePod, or CarPlay device. (For Echo, the wording is "Alexa, ask Cognitum"; for Google, ask via a Cognitum Routine.)
 
 > Your knowledge base is one file: `~/Docs/KB/sous-vide.rvf`. The Seed gets an identical copy at `/var/lib/cognitum/rvf-store/`. You own both.
 >
 > **Don't have Apple Silicon?** Linux x86_64, Linux aarch64, and Windows x86_64 binaries are on the [latest release page](https://github.com/stuinfla/cognitum-learn/releases/latest).
+
+---
+
+## What you'll see when it works
+
+The first time you run `learn study "sous vide cooking for beginners"`, the terminal walks you through every stage so you can see the KB taking shape:
+
+```text
+$ learn study "sous vide cooking for beginners"
+[1/8] discovering candidate videos ......................... 12 found
+[2/8] you picked 4; downloading captions + audio ........... 4/4
+[3/8] smart frame decision (pHash variance) ................ 2 visual, 2 talking-head
+[4/8] transcribing (Whisper.cpp, on-device) ................ 18m23s of audio
+[5/8] chunking (~300 tokens, 50-token overlap) ............. 412 chunks
+[6/8] embedding with BGE-small-en-v1.5 (384-dim, on-device)  412 vectors
+[7/8] indexing into HNSW + Ed25519 witness chain ........... ok
+[8/8] auto-summary (3-5 takeaways via Claude) .............. ok
+wrote ~/Docs/KB/sous-vide.rvf  (4.7 MB)
+auto-push → cognitum-9842.local … ok (verified by checksum)
+
+✓ Done. Try one of these next:
+   learn ask  sous-vide "what temperature for medium-rare steak?"
+   learn chat sous-vide
+   learn ui
+```
+
+If a step shows red, `learn doctor` will tell you exactly which dependency is missing (yt-dlp, ffmpeg, model cache, Seed reachability) and how to fix it.
 
 ---
 
@@ -115,7 +145,7 @@ Mac builds. Seed hosts. Voice anywhere.
 ```
    MAC (the workshop)              COGNITUM SEED (the house)           YOUR HOME (the voice)
    ─────────────────────           ───────────────────────────         ────────────────────────
-   learn ingest <url>      ──►     /var/lib/cognitum/rvf-store/    ◄── "Hey Siri, ask Cognitum…"
+   learn ingest <url>      ──►     /var/lib/cognitum/rvf-store/    ◄── "Hey Siri, Cognitum…"
    learn study "topic"             single file per topic               "Alexa, ask Cognitum…"
    learn chat <topic>              answers questions locally           "Hey Google, run Cognitum check"
    learn ui (dashboard)            with cited timestamps
@@ -125,7 +155,7 @@ Mac builds. Seed hosts. Voice anywhere.
 
 ### 1. Build (on your Mac)
 
-The Mac does the heavy work — once per topic. It finds videos, downloads them, runs them through Whisper or VTT captions, chunks the transcript, embeds each chunk with BGE-small-en-v1.5 (384-dim), and writes everything into a single `.rvf` file. If `seed.auto_push: true`, the file is pushed to your Seed automatically when the ingest completes.
+The Mac does the heavy work — once per topic. It finds videos, downloads them, runs them through Whisper or VTT captions, breaks the transcript into bite-sized passages, turns each into a 384-number search fingerprint using a tiny open-source model (BGE-small) that runs on your Mac, and writes everything into a single `.rvf` file. If `seed.auto_push: true`, the file is pushed to your Seed automatically when the ingest completes.
 
 ```bash
 learn study "Japanese knife sharpening"           # autonomous discovery + ingest
@@ -154,7 +184,7 @@ This is the new piece in v0.5.7+. After running the voice setup, you can ask you
 
 | Ecosystem | What you say | What you hear back |
 |---|---|---|
-| **Apple** (iPhone, HomePod, CarPlay) | *"Hey Siri, ask Cognitum what temperature for medium-rare steak"* | *"54 degrees Celsius for 1 to 4 hours gives perfect medium-rare edge to edge."* |
+| **Apple** (iPhone, HomePod, CarPlay) | *"Hey Siri, Cognitum what temperature for medium-rare steak"* | *"54 degrees Celsius for 1 to 4 hours gives perfect medium-rare edge to edge."* |
 | **Alexa** (Echo Dot, Echo Show) | *"Alexa, ask Cognitum about laminating dough"* | *"Lamination creates layers of fat between dough sheets, producing flaky pastry."* |
 | **Google** (Nest Mini, Nest Hub) | *"Hey Google, run Cognitum check"* | A pre-defined voice Routine fires; speaker broadcasts the answer summary. Arbitrary slot Q&A on Nest hardware is not possible — Google retired that surface in 2023. See [voice setup](#voice-setup) for the three Routine patterns. |
 
@@ -200,7 +230,7 @@ learn ask type-2-diabetes "is intermittent fasting safe with metformin?"
 
 **Out loud, anywhere in your home:**
 
-> *"Hey Siri, ask Cognitum what knife angle for a gyuto."*
+> *"Hey Siri, Cognitum what knife angle for a gyuto."*
 >
 > *"Alexa, ask Cognitum about beurrage temperature."*
 >
@@ -487,6 +517,10 @@ Every query teaches the Seed which chunks were useful and which weren't. Over ti
 
 ### Voice setup
 
+**iPhone Shortcut returns nothing (most common).** The voice-proxy is bound to `127.0.0.1` instead of `0.0.0.0`, so the cloudflared tunnel can't reach it. Set `COG_VOICE_BIND=0.0.0.0` in `~/Library/LaunchAgents/com.cognitum.voice-proxy.plist`, then `launchctl unload && launchctl load` it. Verify with `lsof -nP -i :7879` — you want `*:7879 (LISTEN)`, not `127.0.0.1:7879`.
+
+**Apple Shortcut won't trigger at all.** Name the Shortcut `Cognitum` (NOT `Ask Cognitum`); avoid Siri-reserved verbs like `Ask`, `Tell`, `Call`, `Text` — Siri routes those to Contacts/Messages instead of your Shortcut. The v0.6.0 wizard detects both automatically and offers a re-install QR.
+
 **Apple Shortcut won't trigger.** The Shortcut needs your voice-proxy URL embedded at install time. If you renamed the proxy or changed the cloudflared tunnel, re-install the Shortcut. The v0.6.0 wizard's troubleshooting screen (above) detects this automatically and offers a re-install QR.
 
 **Alexa skill returns "Cognitum is having trouble."** Almost always a Lambda cold-start or timeout. The v0.5.8 release adds the Haiku-fast-path that returns within Alexa's 8-second window for short queries; long queries still fall back to a "let me think about that for a moment" response. Watch the Lambda logs (`aws logs tail /aws/lambda/ask-cognitum --follow`) for the actual error.
@@ -509,7 +543,7 @@ This README reflects what is shipped tonight and what is queued. Cognitum Learn 
 |---|---|---|
 | **Build** (`learn ingest` / `learn study`) | **GA, v0.5.4+** | Apple Silicon binary primary; Linux x86_64 + Linux aarch64 + Windows x86_64 binaries published every tag. |
 | **Mac chat** (`learn chat` + `learn ui`) | **GA, v0.2.11+** | React dashboard at `http://127.0.0.1:7878`; 4-step onboarding wizard for new Seed owners. |
-| **Apple voice** (`Hey Siri, ask Cognitum`) | **GA, v0.5.7+** | Voice-proxy LaunchAgent + Shortcut + cloudflared tunnel; verified end-to-end on Stuart's stack. |
+| **Apple voice** (`Hey Siri, Cognitum`) | **GA, v0.5.7+** | Voice-proxy LaunchAgent + Shortcut + cloudflared tunnel; verified end-to-end on Stuart's stack. |
 | **Alexa voice** (`Alexa, ask Cognitum`) | **In flight tonight** | Haiku-fast-path Lambda being isolated in v0.5.8 to fit Alexa's 8-second window; full GA expected v0.5.9. |
 | **Google voice** (Routines only) | **Scripted-only** | Three pre-defined Routines work today; arbitrary-slot Q&A on Nest hardware is *not possible* (ecosystem constraint — Google retired Conversational Actions in 2023). |
 | **v0.6.0 wizard** (`learn voice setup`) | **Scoped + designed** | `ADR-CL-004` ratified (private design doc); 7 visual assets generated; implementation lands across Phase 2.0a → 2.0d (5–7 days). Until then, voice setup is manual. |
@@ -610,7 +644,7 @@ cargo test --workspace
 cargo build --release --workspace
 ```
 
-CI requires all four green before merge. 384 unit + integration tests (as of v0.5.10).
+CI requires all four green before merge. 380+ unit + integration tests as of v0.5.10; the suite grows with each release.
 
 </details>
 
