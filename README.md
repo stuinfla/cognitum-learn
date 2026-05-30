@@ -54,6 +54,20 @@ No cloud account. No subscription. Your knowledge lives on your Seed, on your ne
 
 ## Quickstart — five steps from zero to "Hey Siri, Cognitum"
 
+> **Before you start — you need a free Anthropic API key.** `learn ask` and
+> `learn chat` turn your knowledge base into a written answer using Claude, so
+> they need a key. Get one in two minutes at **https://console.anthropic.com/**
+> (sign up → *API Keys* → *Create Key*), then add it to your shell profile so
+> it's always set:
+>
+> ```bash
+> echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc   # or ~/.bashrc
+> source ~/.zshrc
+> ```
+>
+> Building and quizzing a KB (`learn study`, `learn ingest`, `learn quiz`) works
+> without a key — you only need it the moment you ask for a written answer.
+
 ```bash
 # 1. Install on your Mac (prebuilt binary, no developer tools required)
 T=$(mktemp -d) && curl -L https://github.com/stuinfla/cognitum-learn/releases/latest/download/learn-aarch64-apple-darwin.tar.gz | tar xz -C "$T" && "$T/learn-aarch64-apple-darwin/install.sh"
@@ -175,6 +189,9 @@ learn apply knife-sharpening "give me a 20-minute sharpening routine for 3 knive
 learn chat  knife-sharpening                       # multi-turn dialog, session-persistent
 learn ui                                           # opens http://127.0.0.1:7878 in your browser
 ```
+
+> **Leaving a chat session:** type `/quit` (or `/exit`), or press **Ctrl-D**.
+> `/help` lists the in-chat slash commands (`/cite`, `/save`, `/quit`).
 
 `learn ui` is the friendliest entry — a self-contained React dashboard served by the built-in Axum bridge. Pick a topic, watch ingest progress live, chat with the KB, no terminal required.
 

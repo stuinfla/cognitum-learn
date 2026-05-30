@@ -1955,7 +1955,7 @@ pub async fn run_chat(
         if let Some(rest) = trimmed.strip_prefix('/') {
             let cmd = rest.split_whitespace().next().unwrap_or(rest);
             match cmd {
-                "quit" | "q" => break,
+                "quit" | "q" | "exit" => break,
                 "save" => {
                     eprintln!(
                         "Session auto-saved to KB/_chat/{}/{}.jsonl",
@@ -1984,7 +1984,7 @@ pub async fn run_chat(
                     }
                 }
                 "help" | "?" => {
-                    println!("Slash commands: /help  /cite  /save  /quit");
+                    println!("Slash commands: /help  /cite  /save  /quit (or /exit, or Ctrl-D)");
                 }
                 _ => {
                     println!("Unknown command /{cmd}. Try /help");
