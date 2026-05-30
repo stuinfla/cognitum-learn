@@ -657,10 +657,15 @@ async fn retrieve_via_seed(
     match result {
         Ok(hits) => Ok(hits),
         Err(e) if backend == AskBackend::Auto => {
-            eprintln!(
-                "  Seed query failed ({e}); falling back to local retrieval. \
-                 Use `--on-seed` to force-fail instead."
-            );
+            let msg = e.to_string();
+            if msg.contains("sensor mode") {
+                eprintln!("  Answering from your Mac (Seed is in sensor mode).{msg}");
+            } else {
+                eprintln!(
+                    "  Seed query failed ({e}); falling back to local retrieval. \
+                     Use `--on-seed` to force-fail instead."
+                );
+            }
             // Re-open the index for the local path (the moved `index` ref was
             // borrowed by the Seed call; LearnIndex::open_read is cheap).
             let local_index = learn_index::LearnIndex::open_read(kb_root, topic.clone())?;

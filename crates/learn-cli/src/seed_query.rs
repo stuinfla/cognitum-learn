@@ -132,12 +132,14 @@ pub async fn query_seed(
             401 => "\n  hint: Seed rejected the bearer token. Pair this client and \
                     store the token with `learn config set seed.token <BEARER>`."
                 .to_owned(),
-            400 if body.contains("dim mismatch") => format!(
-                "\n  hint: query vector dimension does not match Seed store dimension. \
-                 The Seed responded: {body}\n  \
-                 Re-ingest the topic with the embedder that matches the Seed's dimension, \
-                 or wipe the Seed store and re-push at the desired dim."
-            ),
+            400 if body.contains("dim mismatch") => {
+                "\n  Your Seed is currently in sensor mode (a different vector dimension), \
+                 so it can't answer KB queries yet.\n  \
+                 Your knowledge bases stay on your Mac and answer locally — \
+                 everything works.\n  \
+                 To host KBs on the Seed, see docs/seed-setup.md."
+                    .to_owned()
+            }
             _ => String::new(),
         };
         return Err(LearnError::Retrieve(format!(

@@ -761,15 +761,12 @@ fn load_emb_file(emb_path: &Path) -> Result<HashMap<u64, Vec<f32>>> {
         return Ok(HashMap::new());
     }
 
-    let record_size = 8 + 4 + dim * 4; // id(8) + vec_byte_len(4) + floats
-    let expected = 12 + count * record_size;
-    if raw.len() < expected {
-        tracing::warn!(
-            "emb.bin truncated (expected {expected} bytes, got {}); loading partial data",
-            raw.len()
-        );
-    }
-
+    // Each record is self-describing: `id(8) | vec_byte_len(4) | floats`.
+    // Records are NOT a fixed size — a KB re-ingested with a different embedder
+    // legitimately stores mixed dimensions (e.g. 384-dim and 1024-dim vectors)
+    // in the same sidecar. So we walk the records by their own length fields
+    // rather than assuming a uniform `dim * 4` stride; the header `dim` is only
+    // a hint about the most recent embedder.
     let mut map: HashMap<u64, Vec<f32>> = HashMap::with_capacity(count);
     let mut offset = 12usize;
     while offset + 8 + 4 <= raw.len() {
@@ -778,6 +775,7 @@ fn load_emb_file(emb_path: &Path) -> Result<HashMap<u64, Vec<f32>>> {
         let vec_bytes = u32::from_le_bytes(raw[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
         if offset + vec_bytes > raw.len() {
+            // A genuinely truncated trailing record — the only real corruption.
             break;
         }
         let vec: Vec<f32> = raw[offset..offset + vec_bytes]
@@ -786,6 +784,19 @@ fn load_emb_file(emb_path: &Path) -> Result<HashMap<u64, Vec<f32>>> {
             .collect();
         map.insert(id, vec);
         offset += vec_bytes;
+    }
+
+    // Only warn when the file is ACTUALLY short — i.e. the header promises more
+    // records than the bytes can hold, or trailing bytes form a partial record.
+    // This avoids the false-positive "truncated" warning that the old fixed-size
+    // `dim * 4` estimate produced for valid mixed-dimension sidecars.
+    if map.len() < count || offset != raw.len() {
+        tracing::warn!(
+            "emb.bin truncated (header claims {count} records, recovered {} of {} bytes); \
+             loading partial data",
+            offset,
+            raw.len()
+        );
     }
 
     Ok(map)
@@ -2189,5 +2200,71 @@ mod tests {
             (emb[2] - 1.0_f32).abs() < 1e-6,
             "position 2 must be 1.0 after reopen"
         );
+    }
+
+    /// Hand-write a sidecar whose header `dim` is 1024 but whose records are a
+    /// MIX of 1024-dim and 384-dim vectors (the real situation produced by
+    /// re-ingesting a KB with a different embedder). The loader must recover
+    /// every record by following each record's own length field — and must NOT
+    /// emit a false "truncated" warning, since the file is fully consistent.
+    #[test]
+    fn load_emb_file_handles_mixed_dimension_records() {
+        use std::io::Write;
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("mixed.emb.bin");
+
+        let dims = [1024usize, 384, 1024, 384, 384];
+        let mut bytes: Vec<u8> = Vec::new();
+        // Header: dim (most-recent embedder hint) + record count.
+        bytes.extend_from_slice(&(1024u32).to_le_bytes());
+        bytes.extend_from_slice(&(dims.len() as u64).to_le_bytes());
+        for (i, &d) in dims.iter().enumerate() {
+            bytes.extend_from_slice(&(i as u64).to_le_bytes()); // id
+            bytes.extend_from_slice(&((d * 4) as u32).to_le_bytes()); // vec_byte_len
+            for j in 0..d {
+                bytes.extend_from_slice(&(j as f32).to_le_bytes());
+            }
+        }
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(&bytes)
+            .unwrap();
+
+        let map = load_emb_file(&path).unwrap();
+        assert_eq!(map.len(), dims.len(), "all mixed-dim records must load");
+        assert_eq!(map.get(&0).unwrap().len(), 1024);
+        assert_eq!(map.get(&1).unwrap().len(), 384);
+        assert_eq!(map.get(&4).unwrap().len(), 384);
+    }
+
+    /// A genuinely truncated trailing record (the only real corruption) must
+    /// still load the intact records that precede it.
+    #[test]
+    fn load_emb_file_recovers_intact_records_before_truncation() {
+        use std::io::Write;
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("truncated.emb.bin");
+
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(&(8u32).to_le_bytes());
+        bytes.extend_from_slice(&(2u64).to_le_bytes()); // header claims 2
+                                                        // Record 0: complete (8-dim).
+        bytes.extend_from_slice(&(0u64).to_le_bytes());
+        bytes.extend_from_slice(&(32u32).to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 32]);
+        // Record 1: header says 32 bytes but only 16 present → real truncation.
+        bytes.extend_from_slice(&(1u64).to_le_bytes());
+        bytes.extend_from_slice(&(32u32).to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 16]);
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(&bytes)
+            .unwrap();
+
+        let map = load_emb_file(&path).unwrap();
+        assert_eq!(map.len(), 1, "only the intact record is recovered");
+        assert!(map.contains_key(&0));
     }
 }

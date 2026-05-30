@@ -102,32 +102,38 @@ pub(crate) fn parse_dim_mismatch(body: &str) -> Option<(usize, usize)> {
     Some((expected, got))
 }
 
+/// Render the calm, non-alarming explanation shown when a Seed in sensor mode
+/// (locked at a small dimension such as 8) rejects a higher-dimensional KB.
+///
+/// This is the common, expected state for a Seed that is collecting sensor data
+/// — it is NOT a failure. The user's KBs simply stay on the Mac, where
+/// everything continues to work. We avoid the word "error" and never imply the
+/// Seed is broken.
+fn friendly_dim_mismatch_message(seed_dim: Option<usize>, kb_dim: usize) -> String {
+    let seed_desc = match seed_dim {
+        Some(d) => format!("at {d} dimension{}", if d == 1 { "" } else { "s" }),
+        None => "in sensor mode".to_owned(),
+    };
+    format!(
+        "\n  Your Seed currently holds different data (it's in sensor mode {seed_desc}).\n  \
+         Your knowledge bases are {kb_dim}-dimensional, so they'll stay on your Mac for now \
+         — everything works locally.\n  \
+         To host KBs on the Seed, see docs/seed-setup.md."
+    )
+}
+
 /// Build a user-facing hint to append to a non-2xx Seed response.
 ///
-/// Bug 3 fix in v0.5.6: when the Seed body contains "dimension mismatch"
-/// (the real symptom seen with a fresh Seed locked at 8-dim sensor data),
-/// point the user at the wipe-and-recreate migration guide instead of the
-/// vague "Reset the Seed store" hint.
+/// Dim-mismatch is reframed as a calm, expected condition (the Seed is in
+/// sensor mode) rather than a scary failure — see `friendly_dim_mismatch_message`.
 ///
 /// Exposed for unit testing.
 pub(crate) fn build_error_hint(status: u16, body: &str, kb_dim: usize) -> String {
     if body.to_ascii_lowercase().contains("dimension mismatch") {
-        if let Some((expected, got)) = parse_dim_mismatch(body) {
-            return format!(
-                "\n  hint: Seed store is locked at dim {expected} (likely sensor data) — \
-                 your KB is {got}-dim.\n  \
-                 To migrate, wipe the Seed store and let it re-initialise at the new dim. \
-                 See:\n    \
-                 https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
-            );
+        if let Some((expected, _got)) = parse_dim_mismatch(body) {
+            return friendly_dim_mismatch_message(Some(expected), kb_dim);
         }
-        return format!(
-            "\n  hint: Seed store dimension does not match the KB's embedding dimension \
-             ({kb_dim}-dim).\n  \
-             To migrate, wipe the Seed store and let it re-initialise at the new dim. \
-             See:\n    \
-             https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
-        );
+        return friendly_dim_mismatch_message(None, kb_dim);
     }
     match status {
         401 => "\n  hint: pair this client first via `POST /api/v1/pair/window` then \
@@ -135,13 +141,7 @@ pub(crate) fn build_error_hint(status: u16, body: &str, kb_dim: usize) -> String
                 (or set `LEARN_SEED_TOKEN`, or store it with \
                 `learn config set seed.token <TOKEN>`)."
             .to_owned(),
-        409 => format!(
-            "\n  hint: Seed store dimension does not match the KB's embedding dimension \
-             ({kb_dim}-dim).\n  \
-             To migrate, wipe the Seed store and let it re-initialise at the new dim. \
-             See:\n    \
-             https://github.com/stuinfla/cognitum-learn/wiki/seed-dimension-migration"
-        ),
+        409 => friendly_dim_mismatch_message(None, kb_dim),
         _ => String::new(),
     }
 }
@@ -304,6 +304,17 @@ pub async fn run_push(
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            // Dim-mismatch is an expected, non-alarming condition (Seed is in
+            // sensor mode). Surface ONLY the calm explanation — never the raw
+            // "stub verifier" body — so a new Seed owner isn't frightened.
+            if body.to_ascii_lowercase().contains("dimension mismatch") {
+                let seed_dim = parse_dim_mismatch(&body).map(|(expected, _)| expected);
+                return Err(LearnError::Acquire(
+                    friendly_dim_mismatch_message(seed_dim, dim)
+                        .trim_start_matches('\n')
+                        .to_owned(),
+                ));
+            }
             let hint = build_error_hint(status.as_u16(), &body, dim);
             return Err(LearnError::Acquire(format!(
                 "Seed rejected batch {batch_no} (HTTP {status}): {body}{hint}"
@@ -447,28 +458,55 @@ mod tests {
     }
 
     #[test]
-    fn build_error_hint_dim_mismatch_points_at_wiki() {
+    fn build_error_hint_dim_mismatch_is_calm_and_friendly() {
         let body = "dimension mismatch for vector 0: expected 8, got 384";
         let hint = build_error_hint(500, body, 384);
+        // Must read as reassuring, never scary.
         assert!(
-            hint.contains("seed-dimension-migration"),
-            "hint should point at the wiki page; got: {hint}"
+            hint.contains("sensor mode"),
+            "hint should explain the Seed is in sensor mode; got: {hint}"
         );
         assert!(
-            hint.contains("dim 8"),
-            "hint should name the expected dim; got: {hint}"
+            hint.contains("8 dimension"),
+            "hint should name the Seed's current dimension; got: {hint}"
         );
         assert!(
-            hint.contains("384"),
+            hint.contains("384-dimensional"),
             "hint should name the KB dim; got: {hint}"
+        );
+        assert!(
+            hint.contains("everything works locally"),
+            "hint should reassure the user; got: {hint}"
+        );
+        assert!(
+            hint.contains("docs/seed-setup.md"),
+            "hint should point at the setup doc; got: {hint}"
+        );
+        // The scary vocabulary must NOT appear.
+        assert!(
+            !hint.to_ascii_lowercase().contains("stub verifier"),
+            "hint must not leak the raw verifier error; got: {hint}"
+        );
+        assert!(
+            !hint.to_ascii_lowercase().contains("wipe"),
+            "hint must not tell a new user to wipe anything; got: {hint}"
         );
     }
 
     #[test]
     fn build_error_hint_dim_mismatch_works_without_parseable_numbers() {
         let hint = build_error_hint(500, "got a dimension mismatch somewhere", 384);
-        assert!(hint.contains("seed-dimension-migration"));
-        assert!(hint.contains("384-dim"));
+        assert!(hint.contains("sensor mode"));
+        assert!(hint.contains("384-dimensional"));
+        assert!(!hint.to_ascii_lowercase().contains("wipe"));
+    }
+
+    #[test]
+    fn build_error_hint_409_is_calm_and_friendly() {
+        let hint = build_error_hint(409, "conflict", 384);
+        assert!(hint.contains("sensor mode"));
+        assert!(hint.contains("384-dimensional"));
+        assert!(!hint.to_ascii_lowercase().contains("wipe"));
     }
 
     #[test]

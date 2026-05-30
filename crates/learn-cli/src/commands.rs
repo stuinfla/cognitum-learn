@@ -202,10 +202,18 @@ async fn maybe_auto_push(topic: &str, kb_root: &camino::Utf8PathBuf) {
     if let Err(e) =
         crate::push::run_push(topic.to_owned(), Some(addr), None, token, kb_root.clone()).await
     {
-        eprintln!(
-            "ℹ auto-push to Seed failed (KB still saved locally): {e}\n  \
-             Retry manually:  learn push {topic}"
-        );
+        let msg = e.to_string();
+        // A dim-mismatch is the expected "Seed is in sensor mode" case — the
+        // ingest fully SUCCEEDED and the KB lives on the Mac. Present it as
+        // information, not a failure, so the user never thinks ingest broke.
+        if msg.contains("sensor mode") {
+            eprintln!("ℹ Ingest complete — KB saved on your Mac. {msg}");
+        } else {
+            eprintln!(
+                "ℹ auto-push to Seed failed (KB still saved locally): {e}\n  \
+                 Retry manually:  learn push {topic}"
+            );
+        }
     }
 }
 
