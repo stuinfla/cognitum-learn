@@ -321,7 +321,7 @@ GA status (today)   v0.5.7 ✓           v0.5.8 in flight     pre-defined Routin
 ## Privacy and ownership
 
 - **Your knowledge lives on your hardware.** The `.rvf` file is on your Mac at `~/Docs/KB/<topic>.rvf` and on your Seed at `/var/lib/cognitum/rvf-store/`. Copy it, back it up, delete it — you control it.
-- **Your audio never leaves your machine.** Whisper and BGE run on-device. The only outbound network call is `learn ask`'s text completion to Anthropic, and you can replace that with on-device RuVLLM by setting `LEARN_SYNTH_LOCAL=1`.
+- **Your audio never leaves your machine.** Whisper and BGE run on-device. The only outbound network call is `learn ask`'s text completion to Anthropic. (An experimental fully-on-device path exists behind the `local-synth` build feature — see `LEARN_SYNTH_LOCAL` in Configuration; it is **not** included in default or prebuilt binaries.)
 - **The voice path stays on your LAN.** Siri, Alexa, and Google all hit your Mac's voice-proxy through a cloudflared tunnel — your KB is never uploaded to Apple, Amazon, or Google. The tunnel only carries one HTTPS round-trip per spoken question.
 - **No telemetry.** Cognitum Learn does not phone home. Ever.
 
@@ -628,7 +628,7 @@ learn config get seed.address    # or seed.auto_push, seed.token — bare `seed`
 | Variable | Purpose | Default |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Required for `learn ask` / `learn apply` / `learn chat` synthesis | unset |
-| `LEARN_SYNTH_LOCAL` | `1` → use local RuVLLM instead of Anthropic. Fully on-device. | `0` |
+| `LEARN_SYNTH_LOCAL` | `1` → use local RuVLLM instead of Anthropic. **Experimental** — requires building from source with `cargo install --path crates/learn-cli --features local-synth` (CPU inference; Metal has known upstream issues). Default/prebuilt binaries fail fast with guidance. | `0` |
 | `LEARN_AIMDS_REQUIRED` | `1` → fail closed on any `Blocked` AIMDS verdict | `0` |
 | `LEARN_KB_ROOT` | Where `.rvf` files live | `~/Docs/KB` |
 | `LEARN_EMBED_MODEL_DIR` | Where Whisper + BGE models cache | `~/.cache/learn-rs/models` |

@@ -74,7 +74,7 @@ Use `--limit N` with channels/playlists/search to bound ingest. `--since YYYY-MM
 
 ## Environment + safety
 
-- `ANTHROPIC_API_KEY` required for `learn ask` / `apply` / `study`. The skill should NOT hard-fail if missing — surface the requirement and offer the local sovereignty path: `LEARN_SYNTH_LOCAL=1 learn ask <topic> "..."` (uses ruvllm instead of Anthropic).
+- `ANTHROPIC_API_KEY` required for `learn ask` / `apply` / `study`. The skill should NOT hard-fail if missing — surface the requirement. (A local sovereignty path via `LEARN_SYNTH_LOCAL=1` exists but is experimental and needs a source build with `--features local-synth`; do not recommend it on default/prebuilt installs — they fail fast with guidance.)
 - AIMDS guardrails scan inputs and outputs. Set `LEARN_AIMDS_REQUIRED=1` for hard-fail mode.
 - SONA per-topic adapters at `~/.cache/learn-rs/adapters/<topic>/lora.json` accumulate via `record_feedback` and sharpen retrieval over time. Loaded automatically by `Retriever::for_topic`.
 

@@ -525,14 +525,29 @@ pub async fn run_doctor(kb_root: &Path) -> bool {
         "KB root",
         cfg.kb_root
     );
-    let synth_label = if cfg.synth_local {
-        "LEARN_SYNTH_LOCAL=1 (using ruvllm)"
+    let (synth_status, synth_label) = if cfg.synth_local {
+        if learn_synth::LOCAL_SYNTH_COMPILED {
+            (
+                Status::Pass,
+                "LEARN_SYNTH_LOCAL=1 (on-device ruvllm backend compiled in)",
+            )
+        } else {
+            (
+                Status::Fail,
+                "LEARN_SYNTH_LOCAL=1 but this build has NO local backend — synthesis \
+                 will fail; unset it or rebuild with --features local-synth",
+            )
+        }
     } else {
-        "LEARN_SYNTH_LOCAL=0 (using Anthropic; set =1 for ruvllm)"
+        (
+            Status::Pass,
+            "LEARN_SYNTH_LOCAL=0 (using Anthropic API; local synthesis is \
+             experimental and needs a --features local-synth build)",
+        )
     };
     println!(
         "  {} {:<22} {}",
-        symbol(&Status::Pass),
+        symbol(&synth_status),
         "Sovereign LLM",
         synth_label
     );

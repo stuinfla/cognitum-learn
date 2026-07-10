@@ -23,5 +23,12 @@ regex = "1"
 
 ruvllm = { git = "https://github.com/ruvnet/RuVector.git", rev = "cf074121e580a2e2d91a3d0deb0275e989915a96", default-features = false, features = ["minimal", "async-runtime"] }
 
+[features]
+# On-device synthesis via ruvllm's candle backend (issue #2). EXPERIMENTAL:
+# CPU inference works; Metal acceleration has known upstream NaN/hang issues
+# with Llama-3.1-8B quants. Off by default — default builds fail fast with
+# guidance when LEARN_SYNTH_LOCAL=1 instead of erroring deep inside ruvllm.
+local-synth = ["ruvllm/candle"]
+
 [dev-dependencies]
 serial_test = "3"

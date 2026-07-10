@@ -142,15 +142,39 @@ pub trait Synthesizer: Send + Sync {
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
+/// Compile-time flag: whether this build includes a local inference backend
+/// (the `local-synth` cargo feature). Default and prebuilt binaries ship
+/// without one — see GitHub issue #2.
+pub const LOCAL_SYNTH_COMPILED: bool = cfg!(feature = "local-synth");
+
 /// Return the active [`Synthesizer`].
 ///
-/// When `LEARN_SYNTH_LOCAL` is set to any non-empty value, inference runs
-/// entirely on-device via [`RuvllmSynthesizer`]. Otherwise
-/// [`AnthropicSynthesizer`] is returned (requires `ANTHROPIC_API_KEY`).
+/// When `LEARN_SYNTH_LOCAL` is set to any non-empty value AND this build was
+/// compiled with the `local-synth` feature, inference runs entirely on-device
+/// via [`RuvllmSynthesizer`]. On builds without the feature, setting
+/// `LEARN_SYNTH_LOCAL` fails fast with guidance rather than erroring deep
+/// inside ruvllm's no-op backend. Otherwise [`AnthropicSynthesizer`] is
+/// returned (requires `ANTHROPIC_API_KEY`).
 pub fn select_synthesizer() -> Result<Box<dyn Synthesizer>> {
     if std::env::var("LEARN_SYNTH_LOCAL").is_ok() {
-        info!("LEARN_SYNTH_LOCAL is set — using on-device RuvllmSynthesizer");
-        Ok(Box::new(RuvllmSynthesizer::load()?))
+        #[cfg(feature = "local-synth")]
+        {
+            info!("LEARN_SYNTH_LOCAL is set — using on-device RuvllmSynthesizer");
+            Ok(Box::new(RuvllmSynthesizer::load()?))
+        }
+        #[cfg(not(feature = "local-synth"))]
+        {
+            Err(LearnError::Synth(
+                "LEARN_SYNTH_LOCAL is set, but this binary was built without a local \
+                 inference backend — on-device synthesis is experimental and the \
+                 `local-synth` cargo feature is off in default and prebuilt builds. \
+                 Either unset LEARN_SYNTH_LOCAL to use the Anthropic API path, or \
+                 build from source: `cargo install --path crates/learn-cli --features \
+                 local-synth` (CPU inference; Metal acceleration has known upstream \
+                 issues — see GitHub issue #2)."
+                    .to_string(),
+            ))
+        }
     } else {
         info!("LEARN_SYNTH_LOCAL not set — using AnthropicSynthesizer");
         Ok(Box::new(AnthropicSynthesizer::new()?))
@@ -301,8 +325,9 @@ async fn call_anthropic(
 ) -> Result<Answer> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
         LearnError::Synth(
-            "ANTHROPIC_API_KEY not set — set the env var or use LEARN_SYNTH_LOCAL=1 \
-             for on-device inference"
+            "ANTHROPIC_API_KEY not set — set the env var to use synthesis. \
+             (On-device inference via LEARN_SYNTH_LOCAL=1 requires a source \
+             build with the `local-synth` feature; see README.)"
                 .into(),
         )
     })?;
@@ -841,6 +866,35 @@ mod tests {
         }
     }
 
+    /// Default builds ship WITHOUT a local inference backend (issue #2).
+    /// When LEARN_SYNTH_LOCAL is set on such a build, select_synthesizer must
+    /// fail fast with an actionable message naming the `local-synth` feature —
+    /// not a cryptic "No inference backend enabled" from deep inside ruvllm.
+    #[cfg(not(feature = "local-synth"))]
+    #[test]
+    fn select_synthesizer_without_local_synth_feature_fails_fast_with_guidance() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvGuard::set("LEARN_SYNTH_LOCAL", "1");
+
+        let err = match select_synthesizer() {
+            Err(e) => e,
+            Ok(_) => panic!("expected Err on a build without the local-synth feature"),
+        };
+        match err {
+            LearnError::Synth(msg) => {
+                assert!(
+                    msg.contains("local-synth"),
+                    "message must name the local-synth feature; got: {msg}"
+                );
+                assert!(
+                    msg.contains("LEARN_SYNTH_LOCAL"),
+                    "message must tell the user how to get unblocked; got: {msg}"
+                );
+            }
+            other => panic!("expected LearnError::Synth, got {other:?}"),
+        }
+    }
+
     /// When LEARN_SYNTH_LOCAL is NOT set, select_synthesizer must return the
     /// AnthropicSynthesizer branch (which fails on missing API key).
     #[test]
@@ -1098,10 +1152,14 @@ mod tests {
         let _guard = EnvGuard::set("LEARN_SYNTH_LOCAL", "");
 
         let result = select_synthesizer();
-        // Must take the RuvllmSynthesizer branch, which fails because no model
-        // file exists at the default path.
+        // Must take the local branch: on `local-synth` builds that fails
+        // because no model file exists at the default path; on default builds
+        // it fails fast with the local-synth guidance message. Either way it
+        // must NOT silently fall through to the Anthropic branch.
         let ok = matches!(&result, Err(LearnError::Synth(msg))
-            if msg.contains("on-device model not found") || msg.contains("ruvllm"));
+            if msg.contains("on-device model not found")
+                || msg.contains("ruvllm")
+                || msg.contains("local-synth"));
         assert!(
             ok,
             "empty LEARN_SYNTH_LOCAL should still trigger local mode"
