@@ -1119,6 +1119,15 @@ impl LearnIndexLarge {
         let ids_json = self.store_dir.join("ids.json");
         if vectors_bin.exists() && ids_json.exists() {
             let raw = std::fs::read(&vectors_bin).map_err(LearnError::Io)?;
+            if raw.len() < 16 {
+                return Err(LearnError::Index(format!(
+                    "compact: {} is truncated ({} bytes, need at least 16 for the header) — \
+                     the file was likely corrupted by an interrupted write; delete it and re-run \
+                     `learn ingest` to rebuild",
+                    vectors_bin.display(),
+                    raw.len()
+                )));
+            }
             let _built_n = u64::from_le_bytes(raw[0..8].try_into().unwrap()) as usize;
             let built_dim = u64::from_le_bytes(raw[8..16].try_into().unwrap()) as usize;
             if built_dim != dim {
@@ -1133,7 +1142,17 @@ impl LearnIndexLarge {
             let data_start = 16usize;
             for (i, id) in id_list.into_iter().enumerate() {
                 let offset = data_start + i * dim * 4;
-                let bytes = &raw[offset..offset + dim * 4];
+                let end = offset + dim * 4;
+                if end > raw.len() {
+                    return Err(LearnError::Index(format!(
+                        "compact: {} is truncated — record {i} needs bytes [{offset}..{end}) \
+                         but the file is only {} bytes; the file was likely corrupted by an \
+                         interrupted write; delete it and re-run `learn ingest` to rebuild",
+                        vectors_bin.display(),
+                        raw.len()
+                    )));
+                }
+                let bytes = &raw[offset..end];
                 let vec: Vec<f32> = bytes
                     .chunks_exact(4)
                     .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
@@ -1655,6 +1674,46 @@ mod tests {
         assert_eq!(
             hits[0].chunk.chunk_id, planted_chunk_id,
             "reopen must preserve rank-0 result"
+        );
+    }
+
+    // ── Large test: corrupted vectors.bin must error, not panic ─────────────
+    //
+    // compact() reads store_dir/vectors.bin on every call after the first
+    // build (idempotency across ingest cycles — see the compact() doc
+    // comment). If that file is truncated (interrupted write, disk-full,
+    // process killed mid-save), the raw byte-slice reads for the u64 header
+    // MUST return Err, not panic — a corrupted on-disk file is user-facing
+    // reality, not a programmer invariant.
+
+    #[test]
+    fn compact_with_truncated_vectors_bin_returns_err_not_panic() {
+        let dir = TempDir::new().unwrap();
+        let mut idx = open_large_index(&dir, "large-corrupt");
+
+        // First compact: builds and persists a real vectors.bin.
+        let batch: Vec<Embedded> = (0..20).map(|i| make_large_embedded(i, i)).collect();
+        idx.ingest(&batch).unwrap();
+        idx.compact().unwrap();
+
+        // Corrupt vectors.bin: truncate to 4 bytes — shorter than the 16-byte
+        // [u64 count][u64 dim] header compact() reads on the next call.
+        let vectors_bin = dir.path().join("large-corrupt.diskann").join("vectors.bin");
+        assert!(
+            vectors_bin.exists(),
+            "precondition: vectors.bin must exist after first compact"
+        );
+        std::fs::write(&vectors_bin, [0u8; 4]).unwrap();
+
+        // Ingest again so staged_ids is non-empty and compact() actually
+        // reaches the vectors.bin read path instead of early-returning.
+        let batch2: Vec<Embedded> = (20..25).map(|i| make_large_embedded(i, i)).collect();
+        idx.ingest(&batch2).unwrap();
+
+        let result = idx.compact();
+        assert!(
+            result.is_err(),
+            "compact() on a truncated vectors.bin must return Err, not panic or silently succeed"
         );
     }
 
