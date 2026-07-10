@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// HTTPS port that the Seed's API listens on.
-const SEED_HTTPS_PORT: u16 = 8443;
+pub(crate) const SEED_HTTPS_PORT: u16 = 8443;
 
 /// How long to wait for a single Seed query before giving up.
 const QUERY_TIMEOUT_SECS: u64 = 10;
