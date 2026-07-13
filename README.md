@@ -114,7 +114,7 @@ learn ui
 
 After step 5, *"Hey Siri, Cognitum what temperature for medium-rare steak"* speaks the answer back to you from any iPhone, HomePod, or CarPlay device. (For Echo, the wording is "Alexa, ask Cognitum"; for Google, ask via a Cognitum Routine.)
 
-> Your knowledge base is one file: `~/Docs/KB/sous-vide.rvf`. The Seed gets an identical copy at `/var/lib/cognitum/rvf-store/`. You own both.
+> Your knowledge base lives at `~/Docs/KB/sous-vide.*` (the searchable vector index is `sous-vide.rvf`; text, audit trail, and raw source cache live alongside it — see [Where your data lives](#where-your-data-lives)). The Seed gets an identical copy at `/var/lib/cognitum/rvf-store/`. You own both.
 >
 > **Don't have Apple Silicon?** Linux x86_64, Linux aarch64, and Windows x86_64 binaries are on the [latest release page](https://github.com/stuinfla/cognitum-learn/releases/latest).
 
@@ -320,10 +320,25 @@ GA status (today)   v0.5.7 ✓           v0.5.8 in flight     pre-defined Routin
 
 ## Privacy and ownership
 
-- **Your knowledge lives on your hardware.** The `.rvf` file is on your Mac at `~/Docs/KB/<topic>.rvf` and on your Seed at `/var/lib/cognitum/rvf-store/`. Copy it, back it up, delete it — you control it.
+- **Your knowledge lives on your hardware.** Every file is on your Mac under `~/Docs/KB/` and mirrored to your Seed at `/var/lib/cognitum/rvf-store/`. Copy the directory, back it up, delete it — you control it. See [Where your data lives](#where-your-data-lives) for exactly what's in there.
 - **Your audio never leaves your machine.** Whisper and BGE run on-device. The only outbound network call is `learn ask`'s text completion to Anthropic. (An experimental fully-on-device path exists behind the `local-synth` build feature — see `LEARN_SYNTH_LOCAL` in Configuration; it is **not** included in default or prebuilt binaries.)
 - **The voice path stays on your LAN.** Siri, Alexa, and Google all hit your Mac's voice-proxy through a cloudflared tunnel — your KB is never uploaded to Apple, Amazon, or Google. The tunnel only carries one HTTPS round-trip per spoken question.
 - **No telemetry.** Cognitum Learn does not phone home. Ever.
+
+### Where your data lives
+
+Each topic is **several files**, not one — `learn forget <topic>` is the supported way to remove all of them together; deleting only the `.rvf` leaves the rest behind.
+
+| File | Contents | Required to search? |
+|---|---|---|
+| `<topic>.rvf` | The HNSW vector index (real [RVF](https://github.com/ruvnet/RuVector) container, via `rvf-runtime`) | Yes |
+| `<topic>.meta.json` | Chunk text, video/timestamp metadata | Yes |
+| `<topic>.emb.bin` | Embedding cache (rebuildable from `.rvf`) | No — perf cache |
+| `<topic>.witness.json` | Append-only audit trail of what was ingested, when | No — audit only |
+| `<topic>.summary.md` | Human-readable topic summary | No |
+| `_raw/<topic>/` | Downloaded video/caption cache | No — re-fetchable |
+| `_meta/<topic>.json` | Ingestion manifest (resume state) | No |
+| `_graph/<topic>.graphdb` | Knowledge-graph relations, if built | No |
 
 ---
 
