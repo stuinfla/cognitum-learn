@@ -12,6 +12,7 @@ fixtures/cache/
 .claude/
 .mcp.json
 .openclaw/
+.ruvnet-brain/
 
 # But DO ship our own skill folder — it's the user-facing install asset
 !.claude/
