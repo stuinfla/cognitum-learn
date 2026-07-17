@@ -30,7 +30,7 @@ use aimds::ScanVerdict;
 use async_trait::async_trait;
 use learn_core::{Answer, Citation, Hit, LearnError, Result};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 // ── Prompt-template constants (Phase 2 design memo) ─────────────────────────
@@ -559,6 +559,85 @@ impl Synthesizer for AnthropicSynthesizer {
 /// Users place a GGUF quantized model here to enable local inference.
 pub const DEFAULT_MODEL_PATH: &str = "~/.cache/learn-rs/models/ruvllm-default.gguf";
 
+/// Hard ceiling on prompt + generation positions for the on-device path.
+///
+/// This is not merely a tunable default. `ruvllm::ModelConfig::default()` sets
+/// `max_sequence_length: 4096`, *and* candle-transformers' quantized-llama
+/// allocates a fixed 4096-position RoPE cache — so raising the config alone
+/// does not buy headroom. Overrunning it fails inside the forward pass with an
+/// opaque shape error (`narrow invalid args … len: 6039`) rather than anything
+/// a user could act on.
+const LOCAL_CTX_CEILING: usize = 4096;
+
+/// Generation headroom reserved from [`LOCAL_CTX_CEILING`].
+///
+/// Prompt and completion share one position budget, so `generate_answer` passes
+/// this same constant to `with_max_tokens` — the reservation and the actual cap
+/// cannot drift apart.
+const LOCAL_GEN_TOKENS: usize = 512;
+
+/// Slack absorbing tokenizer drift and any BOS/chat-template tokens the backend
+/// adds after we measure.
+const LOCAL_CTX_MARGIN: usize = 64;
+
+/// Token budget available to the rendered prompt on the on-device path.
+const LOCAL_PROMPT_BUDGET: usize = LOCAL_CTX_CEILING - LOCAL_GEN_TOKENS - LOCAL_CTX_MARGIN;
+
+/// Return the rendered prompt and the hit prefix it was built from, trimmed so
+/// the prompt fits [`LOCAL_PROMPT_BUDGET`].
+///
+/// `render` receives a hit slice and returns the *complete* prompt, so the
+/// budget is measured against exactly the string handed to the backend — system
+/// prompt, template scaffolding, question and all — not the context block alone.
+/// Measuring the assembled prompt is what makes this correct regardless of how
+/// long any individual excerpt is; a fixed `hits[..8]` cap is not, since eight
+/// long chunks still overrun and eight short ones waste context.
+///
+/// Hits arrive ranked best-first, so trimming from the tail sheds the least
+/// relevant excerpts.
+///
+/// The returned slice is what callers must build citations from: citing a hit
+/// that was trimmed out of the prompt would attribute the answer to a source the
+/// model never read.
+///
+/// `count` is injected so the budget logic is testable without loading a model.
+fn fit_prompt_to_budget<F, C>(hits: &[Hit], render: F, count: C) -> Result<(String, &[Hit])>
+where
+    F: Fn(&[Hit]) -> String,
+    C: Fn(&str) -> usize,
+{
+    let mut kept = hits.len();
+    loop {
+        let prompt = render(&hits[..kept]);
+        let tokens = count(&prompt);
+
+        if tokens <= LOCAL_PROMPT_BUDGET {
+            if kept < hits.len() {
+                warn!(
+                    kept,
+                    dropped = hits.len() - kept,
+                    prompt_tokens = tokens,
+                    budget = LOCAL_PROMPT_BUDGET,
+                    "trimmed source excerpts to fit the on-device context ceiling"
+                );
+            }
+            return Ok((prompt, &hits[..kept]));
+        }
+
+        if kept == 0 {
+            return Err(LearnError::Synth(format!(
+                "prompt is {tokens} tokens with no source excerpts at all, over the \
+                 {LOCAL_PROMPT_BUDGET}-token on-device budget ({LOCAL_CTX_CEILING} ceiling \
+                 minus generation headroom). The question itself is too long for local \
+                 inference — shorten it, or unset LEARN_SYNTH_LOCAL to use the Anthropic \
+                 path."
+            )));
+        }
+
+        kept -= 1;
+    }
+}
+
 /// Expand `~/…` to an absolute path.
 fn expand_tilde(path: &str) -> std::path::PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
@@ -614,6 +693,21 @@ impl RuvllmSynthesizer {
             .load_model(model_id, ruvllm::ModelConfig::default())
             .map_err(|e| LearnError::Synth(format!("ruvllm load_model failed: {e}")))?;
 
+        // The candle path reads a sidecar `tokenizer.json` next to the model and
+        // ignores the tokenizer embedded in the GGUF itself. Without the sidecar,
+        // generation dies with a bare "No tokenizer loaded" on the first question
+        // and context budgeting falls back to estimation. Say so here, where the
+        // path is still in hand and the fix is obvious.
+        if backend.tokenizer().is_none() {
+            warn!(
+                expected = %model_path.with_file_name("tokenizer.json").display(),
+                "no sidecar tokenizer.json found next to the model — generation will likely \
+                 fail with \"No tokenizer loaded\", and context trimming will fall back to \
+                 estimating token counts. Download the tokenizer.json that ships with this \
+                 model and place it beside the .gguf file."
+            );
+        }
+
         info!(
             "RuvllmSynthesizer loaded model from {}",
             model_path.display()
@@ -652,6 +746,32 @@ impl RuvllmSynthesizer {
             .join("\n\n")
     }
 
+    /// Count tokens in `text` using the backend's tokenizer.
+    ///
+    /// Falls back to a deliberately pessimistic `len / 3` estimate when the
+    /// backend exposes no tokenizer (a GGUF without a sidecar `tokenizer.json`).
+    /// Over-estimating makes the budget shed an excerpt it might have kept;
+    /// under-estimating would overrun [`LOCAL_CTX_CEILING`] and crash the
+    /// forward pass, so the error is biased toward the recoverable direction.
+    fn count_tokens(&self, text: &str) -> usize {
+        self.backend
+            .tokenizer()
+            .and_then(|t| t.encode(text).ok())
+            .map(|ids| ids.len())
+            .unwrap_or_else(|| text.len().div_ceil(3))
+    }
+
+    /// Trim `hits` until the prompt `render` builds from them fits
+    /// [`LOCAL_PROMPT_BUDGET`], counting tokens with the backend tokenizer.
+    ///
+    /// Thin wrapper over [`fit_prompt_to_budget`] that supplies the counter.
+    fn fit_to_budget<'h, F>(&self, hits: &'h [Hit], render: F) -> Result<(String, &'h [Hit])>
+    where
+        F: Fn(&[Hit]) -> String,
+    {
+        fit_prompt_to_budget(hits, render, |text| self.count_tokens(text))
+    }
+
     /// Extract citations from retrieval hits.
     fn build_citations(hits: &[Hit]) -> Vec<Citation> {
         hits.iter()
@@ -674,7 +794,7 @@ impl RuvllmSynthesizer {
     /// an [`Answer`].
     fn generate_answer(&self, prompt: &str, hits: &[Hit]) -> Result<Answer> {
         let params = ruvllm::GenerateParams::default()
-            .with_max_tokens(512)
+            .with_max_tokens(LOCAL_GEN_TOKENS)
             .with_temperature(0.2);
 
         let text = self
@@ -719,20 +839,23 @@ impl Synthesizer for RuvllmSynthesizer {
         }
 
         // ── Inference ─────────────────────────────────────────────────────────
-        let context = Self::format_context(hits);
-        let prompt = format!(
-            "{system}\n\n{user}",
-            system = ASK_SYSTEM_PROMPT,
-            user = ASK_USER_TEMPLATE
-                .replace("{topic}", topic)
-                .replace("{context_snippets}", &context)
-                .replace("{question}", question)
-        );
+        // Trim excerpts until the whole prompt fits the on-device ceiling, and
+        // cite only what survived the trim.
+        let (prompt, cited) = self.fit_to_budget(hits, |h| {
+            format!(
+                "{system}\n\n{user}",
+                system = ASK_SYSTEM_PROMPT,
+                user = ASK_USER_TEMPLATE
+                    .replace("{topic}", topic)
+                    .replace("{context_snippets}", &Self::format_context(h))
+                    .replace("{question}", question)
+            )
+        })?;
         // backend.generate is sync and may block; keep it off the async thread.
         // We call it directly here since we own &self — the trait requires
         // `+ Sync`, so this is safe as long as the backend impl is Sync.
         // (For a future heavy model, wrap with spawn_blocking.)
-        let answer = self.generate_answer(&prompt, hits)?;
+        let answer = self.generate_answer(&prompt, cited)?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
         match aimds::scan_outbound(&answer.text, hits).await? {
@@ -769,17 +892,18 @@ impl Synthesizer for RuvllmSynthesizer {
         }
 
         // ── Inference ─────────────────────────────────────────────────────────
-        let context = Self::format_context(hits);
-        let prompt = format!(
-            "{system}\n\n{user}",
-            system = APPLY_SYSTEM_PROMPT,
-            user = APPLY_USER_TEMPLATE
-                .replace("{topic}", topic)
-                .replace("{task}", task)
-                .replace("{format}", format)
-                .replace("{context_snippets}", &context)
-        );
-        let answer = self.generate_answer(&prompt, hits)?;
+        let (prompt, cited) = self.fit_to_budget(hits, |h| {
+            format!(
+                "{system}\n\n{user}",
+                system = APPLY_SYSTEM_PROMPT,
+                user = APPLY_USER_TEMPLATE
+                    .replace("{topic}", topic)
+                    .replace("{task}", task)
+                    .replace("{format}", format)
+                    .replace("{context_snippets}", &Self::format_context(h))
+            )
+        })?;
+        let answer = self.generate_answer(&prompt, cited)?;
 
         // ── Outbound scan ─────────────────────────────────────────────────────
         match aimds::scan_outbound(&answer.text, hits).await? {
@@ -1163,6 +1287,124 @@ mod tests {
         assert!(
             ok,
             "empty LEARN_SYNTH_LOCAL should still trigger local mode"
+        );
+    }
+
+    // ── on-device context budget (issue #3) ──────────────────────────────────
+
+    /// Stand-in tokenizer: ~4 chars per token, the usual BPE rule of thumb.
+    /// The budget logic only needs *a* monotonic counter, so this keeps the
+    /// arithmetic in these tests predictable without loading a real model.
+    fn approx_tokens(text: &str) -> usize {
+        text.len().div_ceil(4)
+    }
+
+    /// Render like the real `ask` path: fixed scaffolding plus the context block.
+    fn render_ask(hits: &[Hit]) -> String {
+        format!(
+            "{ASK_SYSTEM_PROMPT}\n\n{}",
+            ASK_USER_TEMPLATE
+                .replace("{topic}", "rust")
+                .replace(
+                    "{context_snippets}",
+                    &RuvllmSynthesizer::format_context(hits)
+                )
+                .replace("{question}", "how does ownership work?")
+        )
+    }
+
+    fn budget_hits(n: usize, chars_each: usize) -> Vec<Hit> {
+        (0..n)
+            .map(|i| make_hit(&format!("vid{i}"), &"word ".repeat(chars_each / 5)))
+            .collect()
+    }
+
+    /// A prompt already under budget must pass through untouched — no trimming,
+    /// every hit still citable.
+    #[test]
+    fn budget_keeps_every_hit_when_prompt_fits() {
+        let hits = budget_hits(3, 100);
+        let (prompt, kept) =
+            fit_prompt_to_budget(&hits, render_ask, approx_tokens).expect("small prompt must fit");
+
+        assert_eq!(kept.len(), 3, "nothing should be trimmed under budget");
+        assert!(approx_tokens(&prompt) <= LOCAL_PROMPT_BUDGET);
+    }
+
+    /// Regression for issue #3: 20 hits from a real KB rendered a ~6,039-token
+    /// prompt, overrunning the 4096 ceiling and failing inside the forward pass
+    /// with `narrow invalid args ... len: 6039`. The budget must now trim to fit.
+    #[test]
+    fn budget_trims_oversized_prompt_to_fit_ceiling() {
+        // 20 hits × ~1,200 chars ≈ 6,000 tokens — the reporter's scenario.
+        let hits = budget_hits(20, 1_200);
+        assert!(
+            approx_tokens(&render_ask(&hits)) > LOCAL_CTX_CEILING,
+            "test fixture must actually overrun the ceiling, else it proves nothing"
+        );
+
+        let (prompt, kept) =
+            fit_prompt_to_budget(&hits, render_ask, approx_tokens).expect("must trim, not fail");
+
+        assert!(
+            approx_tokens(&prompt) <= LOCAL_PROMPT_BUDGET,
+            "trimmed prompt must fit the budget"
+        );
+        assert!(!kept.is_empty(), "must keep some context to answer from");
+        assert!(kept.len() < hits.len(), "must have dropped something");
+    }
+
+    /// Citation integrity: the returned slice must be exactly the hits rendered
+    /// into the prompt. Citing a trimmed-away hit would credit a source the
+    /// model never saw.
+    #[test]
+    fn budget_returns_only_the_hits_actually_in_the_prompt() {
+        let hits = budget_hits(20, 1_200);
+        let (prompt, kept) = fit_prompt_to_budget(&hits, render_ask, approx_tokens).unwrap();
+
+        assert_eq!(
+            prompt,
+            render_ask(kept),
+            "prompt must be exactly what the returned hits render to"
+        );
+        for h in kept {
+            assert!(
+                prompt.contains(&h.chunk.video_id),
+                "every returned hit must appear in the prompt"
+            );
+        }
+        // The trimmed tail must be absent — no citing what was dropped.
+        for h in &hits[kept.len()..] {
+            assert!(
+                !prompt.contains(&h.chunk.video_id),
+                "dropped hit {} must not appear in the prompt",
+                h.chunk.video_id
+            );
+        }
+    }
+
+    /// When even a zero-excerpt prompt overruns, fail with actionable guidance
+    /// rather than the opaque shape error from deep inside candle.
+    #[test]
+    fn budget_errors_clearly_when_question_alone_is_too_long() {
+        let hits = budget_hits(2, 100);
+        // Counter that reports everything as over budget — models a question so
+        // long that no amount of trimming saves it.
+        let always_huge = |_: &str| LOCAL_PROMPT_BUDGET + 1;
+
+        let err = fit_prompt_to_budget(&hits, render_ask, always_huge)
+            .expect_err("must fail when nothing fits");
+
+        let LearnError::Synth(msg) = err else {
+            panic!("expected LearnError::Synth");
+        };
+        assert!(
+            msg.contains("too long for local inference"),
+            "error must tell the user what to do, got: {msg}"
+        );
+        assert!(
+            msg.contains("LEARN_SYNTH_LOCAL"),
+            "error must name the escape hatch, got: {msg}"
         );
     }
 }

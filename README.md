@@ -1,5 +1,12 @@
 # Cognitum Learn
 
+> **Repo:** [github.com/stuinfla/cognitum-learn](https://github.com/stuinfla/cognitum-learn) · **CLI binary:** `learn` · **Issues:** [report a bug](https://github.com/stuinfla/cognitum-learn/issues)
+>
+> This repository *is* the `learn` command — the CLI, the `learn ui` dashboard, and the
+> `cognitum-learn` Claude Code skill all build from this tree. If you are looking at a
+> checkout and wondering whether it is this project: run `learn --version` and compare it
+> against [the latest release](https://github.com/stuinfla/cognitum-learn/releases).
+
 ![Cognitum Learn — build, chat, and voice-query your knowledge from anywhere in your home](assets/voice-setup/wizard-hero.jpg)
 
 **You pick a subject. Cognitum watches the videos and reads the documents for you, then answers your questions — by text on your Mac or out loud through Siri, Alexa, or Google. Everything stays on devices you own.**
@@ -650,6 +657,33 @@ learn config get seed.address    # or seed.auto_push, seed.token — bare `seed`
 | `RUST_LOG` | Tracing filter (`info`, `debug`, `learn_synth=trace`) | `warn` |
 
 **Seed config** is persisted via `learn config set seed.*`. Relevant keys: `seed.address`, `seed.token`, `seed.auto_push`.
+
+### On-device synthesis (`LEARN_SYNTH_LOCAL=1`)
+
+The fully-local answer path is experimental and has two requirements that are easy to miss:
+
+**A sidecar `tokenizer.json` is required, next to the model file.** The candle backend does
+not read the tokenizer embedded inside the GGUF — it looks for a separate `tokenizer.json`
+in the same directory:
+
+```
+~/.cache/learn-rs/models/
+├── ruvllm-default.gguf
+└── tokenizer.json          ← download this from the model's HuggingFace repo
+```
+
+Without it, `learn` warns at model load and generation fails with `No tokenizer loaded`.
+(Reading the GGUF-embedded tokenizer is an upstream change in
+[ruvnet/RuVector](https://github.com/ruvnet/RuVector).)
+
+**Context is capped at 4096 tokens, and excerpts are trimmed to fit.** Prompt and answer
+share a fixed 4096-position budget — that limit is structural (candle's quantized-llama
+allocates a fixed-size RoPE cache), not a setting you can raise. `learn` measures the
+assembled prompt and drops the lowest-ranked excerpts until it fits, reserving room for the
+answer. When that happens you'll see a `trimmed source excerpts` warning under `RUST_LOG=warn`,
+and **only the excerpts that survived the trim are cited** — an answer never cites a source
+the model didn't actually read. A large `--depth` on a big KB will therefore trim more; the
+Anthropic path (unset `LEARN_SYNTH_LOCAL`) has no such ceiling.
 
 </details>
 

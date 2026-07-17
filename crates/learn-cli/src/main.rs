@@ -184,6 +184,15 @@ enum Cmd {
     /// First-60-seconds environment diagnostic: check deps, storage, network,
     /// version, and config.  Exit 0 when all required checks pass.
     Doctor,
+    /// Install the Claude Code skill manifest to
+    /// ~/.claude/skills/cognitum-learn/SKILL.md, so Claude Code can drive
+    /// `learn` directly. This is the command `learn doctor` points at when the
+    /// Skill-folder check fails.
+    InstallSkill {
+        /// Overwrite an existing SKILL.md instead of leaving it untouched.
+        #[arg(long)]
+        force: bool,
+    },
     /// Interactive multi-turn chat session grounded in a topic KB.
     Chat {
         topic: String,
@@ -346,6 +355,49 @@ enum ConfigAction {
     List,
 }
 
+/// The Claude Code skill manifest, embedded at compile time.
+///
+/// Embedded rather than read from disk so a `cargo install`ed binary — which
+/// has no repo checkout to copy from — can still install the skill.
+const SKILL_MANIFEST: &str = include_str!("../../../.claude/skills/cognitum-learn/SKILL.md");
+
+/// Where the skill manifest is installed. `learn doctor` checks this same path.
+const SKILL_REL_PATH: &str = ".claude/skills/cognitum-learn/SKILL.md";
+
+/// Install [`SKILL_MANIFEST`] to `~/.claude/skills/cognitum-learn/SKILL.md`.
+///
+/// Returns `true` on success. Refuses to clobber an existing manifest unless
+/// `force` is set, since users may have edited theirs.
+fn install_skill(force: bool) -> bool {
+    let Some(home) = dirs::home_dir() else {
+        eprintln!("error: cannot locate your home directory — is $HOME set?");
+        return false;
+    };
+    let dest = home.join(SKILL_REL_PATH);
+
+    if dest.exists() && !force {
+        println!("Skill already installed at {}", dest.display());
+        println!("Nothing to do. Re-run with --force to overwrite it.");
+        return true;
+    }
+
+    if let Some(parent) = dest.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("error: could not create {}: {e}", parent.display());
+            return false;
+        }
+    }
+
+    if let Err(e) = std::fs::write(&dest, SKILL_MANIFEST) {
+        eprintln!("error: could not write {}: {e}", dest.display());
+        return false;
+    }
+
+    println!("Installed skill to {}", dest.display());
+    println!("Restart Claude Code to pick it up, then ask it to use `learn`.");
+    true
+}
+
 /// Print the friendly orientation block and exit 0.
 /// Called when the binary is invoked with no arguments.
 fn print_orientation() -> ! {
@@ -390,6 +442,10 @@ async fn main() {
     if matches!(cli.cmd, Cmd::Doctor) {
         let ok = doctor::run_doctor(kb_root.as_std_path()).await;
         process::exit(if ok { 0 } else { 1 });
+    }
+
+    if let Cmd::InstallSkill { force } = cli.cmd {
+        process::exit(if install_skill(force) { 0 } else { 1 });
     }
 
     let result = match cli.cmd {
@@ -513,6 +569,7 @@ async fn main() {
         Cmd::Ui { port } => ui::run_ui(kb_root, Some(port)).await,
         // Doctor is dispatched above; this arm is unreachable but required by exhaustiveness.
         Cmd::Doctor => unreachable!("doctor dispatched before match"),
+        Cmd::InstallSkill { .. } => unreachable!("install-skill dispatched before match"),
     };
 
     if let Err(e) = result {
