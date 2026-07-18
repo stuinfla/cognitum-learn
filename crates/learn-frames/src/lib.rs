@@ -18,7 +18,7 @@
 #![deny(unsafe_code)]
 
 pub mod decide;
-pub use decide::{decide_frames, Decision, FrameDecision, FramesArg};
+pub use decide::{decide_frames, Decision, FrameDecision, FramesArg, DEMO_FPS, VISUAL_FPS};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use learn_core::{LearnError, Result, Segment, SegmentKind};
@@ -54,8 +54,14 @@ impl Default for ExtractorConfig {
     fn default() -> Self {
         Self {
             ffmpeg_path: Utf8PathBuf::from("ffmpeg"),
-            fps_rate: 0.1, // 1 frame per 10 s
-            max_frames: 60,
+            // Overridden per-video by the content-tier rate (see learn-frames::decide).
+            // This fallback only applies when no decision fps is threaded through.
+            fps_rate: 0.2, // 1 frame per 5 s
+            // Cost ceiling, not a target. At the demo rate (1 frame / 2 s) this covers
+            // a 10-minute demo at full density; longer videos are downsampled and the
+            // extractor warns when that happens (see effective_fps). Raise with
+            // --max-frames when you want full density on a long video.
+            max_frames: 300,
         }
     }
 }
@@ -147,6 +153,8 @@ impl FrameExtractor {
     /// Estimate the effective fps after applying the `max_frames` cap.
     ///
     /// When no duration is knowable (no probe available), returns `cfg.fps_rate` unchanged.
+    /// When the cap forces a slower rate than requested, warns — a silently
+    /// downsampled long video is how on-screen content goes missing without notice.
     fn effective_fps(&self, video_path: &Utf8Path) -> f64 {
         let duration = probe_duration(video_path).unwrap_or(0.0);
         if duration <= 0.0 {
@@ -157,7 +165,20 @@ impl FrameExtractor {
             self.cfg.fps_rate
         } else {
             // Reduce fps so estimated count == max_frames.
-            self.cfg.max_frames as f64 / duration
+            let capped = self.cfg.max_frames as f64 / duration;
+            let requested_spacing = 1.0 / self.cfg.fps_rate;
+            let capped_spacing = 1.0 / capped;
+            tracing::warn!(
+                duration_secs = duration.round(),
+                requested = format!("1 frame / {requested_spacing:.0}s"),
+                capped = format!("1 frame / {capped_spacing:.0}s"),
+                max_frames = self.cfg.max_frames,
+                "video is long enough that the {max} frame cap forces coarser sampling \
+                 than the content tier wants — some on-screen moments will be missed. \
+                 Raise --max-frames to sample at full density.",
+                max = self.cfg.max_frames
+            );
+            capped
         }
     }
 }
@@ -229,8 +250,18 @@ impl FrameCaptioner {
 /// a `Vec<Segment>` with `kind = SegmentKind::FrameDescription`.
 ///
 /// Frames are extracted into `out_dir`. Captioning is sequential with backoff.
-/// When `video_path` cannot be opened or ffmpeg is absent the error propagates;
-/// individual caption failures are warned and skipped (best-effort per frame).
+/// When `video_path` cannot be opened or ffmpeg is absent the error propagates.
+///
+/// # Per-frame tolerance vs. systemic failure
+///
+/// A *few* failed captions are tolerated and skipped — one flaky frame should not
+/// sink an otherwise good ingest. But a caption failure that hits *every* frame is
+/// not a frame problem, it is a systemic one (an invalid `ANTHROPIC_API_KEY`, a
+/// revoked account, no network), and silently returning zero segments would hand
+/// the caller a captions-only KB while reporting success. That is the worst
+/// outcome available: the user asked to watch the video, got a transcript, and was
+/// told it worked. So when frames were extracted and *nothing* captioned, this
+/// returns the underlying error instead of an empty `Vec`.
 pub async fn extract_and_caption(
     video_path: &Utf8Path,
     out_dir: &Utf8Path,
@@ -243,6 +274,8 @@ pub async fn extract_and_caption(
 
     let captioner = FrameCaptioner::new(captioner_cfg.clone())?;
     let mut segments = Vec::with_capacity(frames.len());
+    let mut first_error: Option<LearnError> = None;
+    let mut failed = 0usize;
 
     for frame in &frames {
         match captioner.caption_frame(frame).await {
@@ -255,14 +288,44 @@ pub async fn extract_and_caption(
                 kind: SegmentKind::FrameDescription,
             }),
             Err(e) => {
+                failed += 1;
                 tracing::warn!(
                     frame_index = frame.frame_index,
                     timestamp = frame.timestamp_seconds,
                     error = %e,
                     "frame caption failed — skipping"
                 );
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
             }
         }
+    }
+
+    // Every frame failed: systemic, not per-frame. Surface the real cause.
+    if segments.is_empty() && !frames.is_empty() {
+        let cause = first_error
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "unknown error".to_string());
+        return Err(LearnError::Acquire(format!(
+            "frame captioning failed for all {} frames — this KB would contain the \
+             transcript only, with none of the on-screen content. First error: {cause}\n\
+             \n\
+             The usual cause is an invalid or expired ANTHROPIC_API_KEY (frame captioning \
+             is the one ingest step that requires it). Check it with `learn doctor`.\n\
+             To ingest the transcript alone anyway, re-run with --frames=off.",
+            frames.len()
+        )));
+    }
+
+    if failed > 0 {
+        tracing::warn!(
+            captioned = segments.len(),
+            failed,
+            total = frames.len(),
+            "some frames could not be captioned — on-screen content from those moments \
+             is NOT in this KB"
+        );
     }
 
     Ok(segments)

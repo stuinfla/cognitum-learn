@@ -56,8 +56,11 @@ enum Cmd {
         /// Explicitly enable Sonnet-vision frame captioning (equivalent to --frames=on).
         #[arg(long, conflicts_with = "frames")]
         with_frames: bool,
-        /// Maximum number of keyframes to extract per video (default: 60).
-        #[arg(long, default_value = "60")]
+        /// Cost ceiling on keyframes per video (default: 300). Not a target — the
+        /// per-video rate is chosen by content (demo vs. slides vs. talking head).
+        /// This caps runaway cost on long videos; raise it for full density on a
+        /// long demo.
+        #[arg(long, default_value = "300")]
         max_frames: usize,
         #[arg(long)]
         force: bool,

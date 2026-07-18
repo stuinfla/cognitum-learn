@@ -46,6 +46,10 @@ pub struct FrameDecision {
     pub reason: String,
     pub variance: f32,
     pub probe_invoked: bool,
+    /// Recommended sampling rate in frames per second of video, chosen by content
+    /// tier. `0.0` for a `Skip`. See [`DEMO_FPS`] / [`VISUAL_FPS`]. The extractor
+    /// still caps the resulting count at `max_frames`.
+    pub recommended_fps: f64,
 }
 
 // Thresholds (named for readability and easy tuning).
@@ -56,6 +60,22 @@ pub struct FrameDecision {
 const VARIANCE_HIGH: f32 = 0.30;
 const VARIANCE_LOW: f32 = 0.015;
 const PROBE_FRAMES: usize = 5;
+
+// Content-tiered sampling rates (frames per second of video). Pacing follows what
+// the video actually is: a talking head is skipped entirely, so the only choice is
+// between slower-changing visual material and a live demo.
+//
+// DEMO_FPS = 1 frame / 2 s. A deliberate on-screen action — opening a panel,
+//   revealing a result — is visible for at least ~2 s essentially always, so this
+//   catches demo steps a human would notice. 1 fps was considered and rejected: it
+//   doubles cost to catch sub-2-second flashes a presenter almost never leaves that
+//   brief.
+// VISUAL_FPS = 1 frame / 5 s. Slides and whiteboards hold a state far longer than a
+//   demo does; sampling faster mostly re-captions an unchanged frame.
+/// Sampling rate for high-motion visual content (screen demos): 1 frame / 2 s.
+pub const DEMO_FPS: f64 = 0.5;
+/// Sampling rate for slower visual content (slides, whiteboard): 1 frame / 5 s.
+pub const VISUAL_FPS: f64 = 0.2;
 
 const VLM_PROBE_PROMPT: &str = "\
 Does this video frame contain meaningful visual content beyond a person speaking?\n\
@@ -81,6 +101,8 @@ pub async fn decide_frames(video_path: &Utf8Path, frames_arg: FramesArg) -> Resu
             reason: "frames=on (forced)".to_string(),
             variance: 1.0,
             probe_invoked: false,
+            // Forced on = "be thorough": use the dense demo rate.
+            recommended_fps: DEMO_FPS,
         }),
         FramesArg::Off => Ok(FrameDecision {
             mode: Decision::Skip {
@@ -89,6 +111,7 @@ pub async fn decide_frames(video_path: &Utf8Path, frames_arg: FramesArg) -> Resu
             reason: "frames=off (forced)".to_string(),
             variance: 0.0,
             probe_invoked: false,
+            recommended_fps: 0.0,
         }),
         FramesArg::Auto => auto_decide(video_path).await,
     }
@@ -109,6 +132,8 @@ async fn auto_decide(video_path: &Utf8Path) -> Result<FrameDecision> {
             reason,
             variance,
             probe_invoked: false,
+            // High frame-to-frame change = live demo/screen recording: sample densely.
+            recommended_fps: DEMO_FPS,
         });
     }
 
@@ -121,6 +146,7 @@ async fn auto_decide(video_path: &Utf8Path) -> Result<FrameDecision> {
             reason,
             variance,
             probe_invoked: false,
+            recommended_fps: 0.0,
         });
     }
 
@@ -129,18 +155,24 @@ async fn auto_decide(video_path: &Utf8Path) -> Result<FrameDecision> {
     let middle_frame = probe_dir.join("probe-0003.jpg");
     let vlm_result = vlm_probe(&middle_frame).await;
 
-    let (decision, reason) = match vlm_result {
+    // Rate differs by outcome: the probe fires only in the MID band, where a
+    // "visual" verdict means slides/whiteboard-style material — sample at the
+    // slower VISUAL_FPS. When the probe itself fails we default on but cannot tell
+    // slides from a demo, so we err toward the denser DEMO_FPS.
+    let (decision, reason, fps) = match vlm_result {
         Ok(VlmVerdict::Visual(label)) => (
             Decision::FullExtraction {
                 reason: format!("MID variance ({variance:.2}) — vlm-probe: {label}"),
             },
             format!("MID variance ({variance:.2}) — vlm-probe: {label}"),
+            VISUAL_FPS,
         ),
         Ok(VlmVerdict::TalkingHead(label)) => (
             Decision::Skip {
                 reason: format!("MID variance ({variance:.2}) — vlm-probe: {label}"),
             },
             format!("MID variance ({variance:.2}) — vlm-probe: {label}"),
+            0.0,
         ),
         Err(e) => {
             let reason =
@@ -151,6 +183,7 @@ async fn auto_decide(video_path: &Utf8Path) -> Result<FrameDecision> {
                     reason: reason.clone(),
                 },
                 reason,
+                DEMO_FPS,
             )
         }
     };
@@ -160,6 +193,7 @@ async fn auto_decide(video_path: &Utf8Path) -> Result<FrameDecision> {
         reason,
         variance,
         probe_invoked: true,
+        recommended_fps: fps,
     })
 }
 
@@ -446,6 +480,10 @@ mod tests {
         );
         assert!(!decision.probe_invoked);
         assert_eq!(decision.variance, 1.0);
+        assert_eq!(
+            decision.recommended_fps, DEMO_FPS,
+            "forced-on should sample at the dense demo rate"
+        );
     }
 
     // ── Test 2: FramesArg::Off always returns Skip ────────────────────────────
@@ -459,6 +497,38 @@ mod tests {
         );
         assert!(!decision.probe_invoked);
         assert_eq!(decision.variance, 0.0);
+        assert_eq!(
+            decision.recommended_fps, 0.0,
+            "a skipped video samples no frames"
+        );
+    }
+
+    // ── Pacing tiers: for the same video, a demo must yield more frames than
+    //    slides, and both more than the old flat 1/10s. Expressed as frame
+    //    counts over a real duration (not a restatement of the constants) so the
+    //    test catches a broken tier relationship, and `black_box` keeps the
+    //    compiler from folding it to a tautology. ──────────────────────────────
+    #[test]
+    fn denser_tier_yields_more_frames_for_same_video() {
+        let duration_secs = std::hint::black_box(600.0_f64); // a 10-minute video
+        let frames = |fps: f64| (duration_secs * fps).round() as usize;
+
+        let demo = frames(DEMO_FPS);
+        let slides = frames(VISUAL_FPS);
+        let old_flat = frames(0.1); // the previous 1-frame-per-10s behaviour
+
+        assert!(
+            demo > slides,
+            "a demo ({demo} frames) must be sampled denser than slides ({slides})"
+        );
+        assert!(
+            slides > old_flat,
+            "even slides ({slides} frames) must beat the old 1/10s rate ({old_flat})"
+        );
+        // Concretely: a 10-min demo should now capture 300 frames (1 / 2s), where
+        // the old flat rate captured 60.
+        assert_eq!(demo, 300, "10-min demo at 1 frame / 2s");
+        assert_eq!(old_flat, 60, "10-min video at the old 1 frame / 10s");
     }
 
     // ── Test 3: avg_hamming returns 0.0 for single identical hashes ──────────

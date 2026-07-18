@@ -405,6 +405,8 @@ async fn ingest_single_video(
                             reason: format!("decision error ({e}), defaulting on"),
                             variance: 1.0,
                             probe_invoked: false,
+                            // Can't classify — err toward the denser demo rate.
+                            recommended_fps: learn_frames::DEMO_FPS,
                         }
                     });
 
@@ -414,7 +416,13 @@ async fn ingest_single_video(
                 match &frame_decision.mode {
                     learn_frames::Decision::Skip { .. } => vec![],
                     learn_frames::Decision::FullExtraction { .. } => {
-                        run_frame_captioning(vp, &acquired.raw_dir, max_frames).await
+                        run_frame_captioning(
+                            vp,
+                            &acquired.raw_dir,
+                            max_frames,
+                            frame_decision.recommended_fps,
+                        )
+                        .await?
                     }
                 }
             }
@@ -1511,13 +1519,20 @@ fn print_frame_decision(
         learn_frames::Decision::FullExtraction { .. } => {
             let extractor_cfg = learn_frames::ExtractorConfig {
                 max_frames,
+                fps_rate: decision.recommended_fps,
                 ..Default::default()
             };
             let frame_count = learn_frames::estimate_frame_count(video_path, &extractor_cfg);
             let cost_estimate = (frame_count as f64) * 0.005;
+            let spacing = if decision.recommended_fps > 0.0 {
+                format!("1 frame / {:.0}s", 1.0 / decision.recommended_fps)
+            } else {
+                "—".to_string()
+            };
             eprintln!("> evaluator: {}", decision.reason);
             eprintln!(
-                "  → {frame_count} frames will be captioned (~${cost_estimate:.2} estimated)"
+                "  → watching at {spacing}: {frame_count} frames will be captioned \
+                 (~${cost_estimate:.2} estimated)"
             );
         }
     }
@@ -1548,23 +1563,31 @@ fn find_video_file(raw_dir: &camino::Utf8Path) -> Option<camino::Utf8PathBuf> {
 
 /// Extract keyframes from a video and caption them with Sonnet vision.
 ///
-/// Returns an empty `Vec` (not an error) if the video path does not exist or if
-/// `ANTHROPIC_API_KEY` is absent — frame captioning is best-effort.
+/// Returns an empty `Vec` when there is no video file to read — that is a
+/// legitimate captions-only run, not a failure.
+///
+/// Errors when frame captioning was attempted and produced *nothing*. The caller
+/// asked for the video to be watched; quietly handing back a transcript-only KB
+/// and reporting success is the one outcome that must not happen, because the
+/// user cannot tell the difference until they ask a question about something that
+/// was only ever on screen.
 async fn run_frame_captioning(
     video_path: &camino::Utf8PathBuf,
     out_dir: &camino::Utf8PathBuf,
     max_frames: usize,
-) -> Vec<learn_core::Segment> {
+    fps_rate: f64,
+) -> Result<Vec<learn_core::Segment>> {
     if !video_path.exists() {
         tracing::debug!(
             path = %video_path,
             "frame captioning: video file not found — skipping"
         );
-        return vec![];
+        return Ok(vec![]);
     }
 
     let extractor_cfg = learn_frames::ExtractorConfig {
         max_frames,
+        fps_rate,
         ..Default::default()
     };
     let captioner_cfg = learn_frames::CaptionerConfig::default();
@@ -1572,18 +1595,11 @@ async fn run_frame_captioning(
     // Print cost estimate.
     learn_frames::estimate_and_print_cost(video_path, &extractor_cfg);
 
-    match learn_frames::extract_and_caption(video_path, out_dir, &extractor_cfg, &captioner_cfg)
-        .await
-    {
-        Ok(segs) => {
-            tracing::info!(count = segs.len(), "frame descriptions produced");
-            segs
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "frame captioning failed — continuing without frames");
-            vec![]
-        }
-    }
+    let segs =
+        learn_frames::extract_and_caption(video_path, out_dir, &extractor_cfg, &captioner_cfg)
+            .await?;
+    tracing::info!(count = segs.len(), "frame descriptions produced");
+    Ok(segs)
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────
